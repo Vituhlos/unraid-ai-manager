@@ -4,7 +4,7 @@ Safe Unraid automation for AI assistants.
 
 Unraid AI Manager is a local control plane for managing Unraid DockerMan templates through a strict plan → diff → approval → apply workflow. It is designed for AI/MCP clients, but the security boundary is the Unraid-side helper daemon, not the chat model.
 
-> Current status: `v0.1.1` is an early preview. It can inventory DockerMan XML templates, inspect Docker runtime state, plan AMUD/TZ/template changes, apply approved XML edits with backups and audit logs, and expose those actions through an MCP server. Community Applications installation and real container lifecycle actions are planned, not implemented yet.
+> Current status: `v0.1.2` is an early preview. It can inventory DockerMan XML templates, inspect Docker runtime state, plan AMUD/TZ/template changes, apply approved XML edits with backups and audit logs, and expose those actions through an MCP server. Community Applications installation and real container lifecycle actions are planned, not implemented yet.
 
 ## Languages
 

@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-06-28
+
+### Fixed
+
+- Fixed the Unraid Settings page rendering as blank by adding the required `.page` content separator and explicitly including the plugin PHP UI file.
+- Reduced the risk of PHP helper name collisions with Unraid/Dynamix by prefixing plugin UI helper functions with `uaim_`.
+
+### Added
+
+- Added a plugin validation script that checks `.page` structure, version consistency and generated `.plg` release URLs before publishing.
+
 ## [0.1.1] - 2026-06-28
 
 ### Added
@@ -54,6 +65,7 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 - The helper binds to `127.0.0.1:37231` by default.
 - The helper supports API-key authentication.
 
-[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Vituhlos/unraid-ai-manager/releases/tag/v0.1.0

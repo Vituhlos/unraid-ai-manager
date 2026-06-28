@@ -8,6 +8,17 @@ Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-06-28
+
+### Fixed
+
+- Opravena prázdná stránka nastavení Unraid pluginu přidáním povinného `.page` oddělovače obsahu a explicitního includu PHP UI souboru.
+- Sníženo riziko kolize PHP helper funkcí s Unraid/Dynamix funkcemi prefixem `uaim_`.
+
+### Added
+
+- Přidán validační skript pluginu, který před publikací kontroluje `.page` strukturu, konzistenci verzí a release URL ve vygenerovaném `.plg`.
+
 ## [0.1.1] - 2026-06-28
 
 ### Added
@@ -56,6 +67,7 @@ Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0
 - Helper se defaultně binduje na `127.0.0.1:37231`.
 - Helper podporuje autentizaci přes API key.
 
-[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Vituhlos/unraid-ai-manager/releases/tag/v0.1.0

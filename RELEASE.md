@@ -16,6 +16,7 @@ Use this checklist for every GitHub and Unraid plugin release.
 & ".\.tools\go\go1.26.4\go\bin\go.exe" test ./...
 node --check .\mcp\unraid-mcp-server.mjs
 powershell -ExecutionPolicy Bypass -File .\scripts\package-unraid-plugin.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\validate-unraid-plugin.ps1
 ```
 
 Verify package contents:

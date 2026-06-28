@@ -1,6 +1,10 @@
 Menu="Settings"
 Icon="robot"
-Version="0.1.1"
+Version="0.1.2"
 Title="Unraid AI Manager"
 Author="Vituhlos"
 Type="php"
+---
+<?php
+require_once "/usr/local/emhttp/plugins/unraid-ai-manager/UnraidAIManager.php";
+?>

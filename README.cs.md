@@ -4,7 +4,7 @@ Bezpečná automatizace Unraidu pro AI asistenty.
 
 Unraid AI Manager je lokální control-plane pro správu Unraid DockerMan šablon přes přísný workflow plán → diff → schválení → aplikace. Je navržený pro AI/MCP klienty, ale bezpečnostní hranice není chat s AI. Bezpečnostní hranice je helper daemon běžící lokálně na Unraidu.
 
-> Aktuální stav: `v0.1.1` je rané preview. Umí načíst DockerMan XML šablony, přečíst runtime stav Dockeru, naplánovat AMUD/TZ/template změny, aplikovat schválené XML úpravy se zálohami a auditem a vystavit tyto akce přes MCP server. Instalace Community Applications a reálné lifecycle akce kontejnerů jsou zatím plánované, ne implementované.
+> Aktuální stav: `v0.1.2` je rané preview. Umí načíst DockerMan XML šablony, přečíst runtime stav Dockeru, naplánovat AMUD/TZ/template změny, aplikovat schválené XML úpravy se zálohami a auditem a vystavit tyto akce přes MCP server. Instalace Community Applications a reálné lifecycle akce kontejnerů jsou zatím plánované, ne implementované.
 
 ## Jazyky
 
