@@ -4,7 +4,7 @@ Safe Unraid automation for AI assistants.
 
 Unraid AI Manager is a local control plane for managing Unraid DockerMan templates through a strict plan → diff → approval → apply workflow. It is designed for AI/MCP clients, but the security boundary is the Unraid-side helper daemon, not the chat model.
 
-> Current status: `v0.1.3` is an early preview. It can inventory DockerMan XML templates, inspect Docker runtime state, plan AMUD/TZ/template changes, apply approved XML edits with backups and audit logs, and expose those actions through an MCP server. Community Applications installation and real container lifecycle actions are planned, not implemented yet.
+> Current status: `v0.1.4` is an early preview. It can inventory DockerMan XML templates, inspect Docker runtime state, plan AMUD/TZ/template changes, apply approved XML edits with backups and audit logs, apply approved DockerMan recreate plans, and expose those actions through an MCP server. Community Applications installation and arbitrary container lifecycle management are planned, not implemented yet.
 
 ## Languages
 
@@ -35,6 +35,7 @@ Unraid AI Manager is a local control plane for managing Unraid DockerMan templat
 - Can explicitly include TCP port-only templates or limit/exclude specific containers when needed.
 - Helper/MCP planning filters to currently running Docker containers by default when Docker runtime access is available.
 - Plans and applies `TZ` environment variable changes.
+- Plans and applies approved Docker recreate operations through Unraid DockerMan `rebuild_container`.
 - Creates XML backups before every write.
 - Requires a plan hash before applying any plan.
 - Optionally requires a short-lived local approval token before apply.
@@ -45,7 +46,8 @@ Unraid AI Manager is a local control plane for managing Unraid DockerMan templat
 ## What it deliberately does not do yet
 
 - It does not install Community Applications containers yet.
-- It does not recreate, start, stop or remove containers yet.
+- It does not perform arbitrary start, stop or remove operations yet.
+- It recreates containers only from an approved recreate plan through Unraid DockerMan.
 - It does not accept raw shell commands from AI.
 - It does not expose an unrestricted Docker socket to MCP clients.
 - It does not mount the full host filesystem into an AI-controlled container.
@@ -134,6 +136,7 @@ Available MCP tools:
 - `unraid_plan_tz`
 - `unraid_apply_tz`
 - `unraid_plan_recreate`
+- `unraid_apply_recreate`
 - `unraid_restore_xml`
 
 Apply tools require `confirm_plan_hash`. When approval tokens are enabled, they also require `approval_token`.
@@ -155,6 +158,7 @@ unraid-ai-manager approve-plan \
 
 5. Let the AI call the apply tool with the plan hash and token.
 6. Verify the audit log and resulting XML.
+7. If the change affects live Docker runtime, create and approve a recreate plan so DockerMan rebuilds the container from the updated XML.
 
 ## Manual CLI examples
 
@@ -192,6 +196,16 @@ unraid-ai-manager apply-amud-plan \
   --approval-token <approval_token> \
   --approvals-dir /mnt/user/appdata/unraid-ai-manager/approvals \
   --backup-dir /mnt/user/appdata/unraid-ai-manager/backups \
+  --audit-dir /mnt/user/appdata/unraid-ai-manager/audit
+```
+
+Apply an approved recreate plan:
+
+```bash
+unraid-ai-manager apply-recreate-plan \
+  --plan /mnt/user/appdata/unraid-ai-manager/plans/recreate-plan.json \
+  --confirm-plan-hash <plan_hash> \
+  --docker-socket /var/run/docker.sock \
   --audit-dir /mnt/user/appdata/unraid-ai-manager/audit
 ```
 

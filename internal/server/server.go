@@ -147,6 +147,13 @@ type ApplyTZRequest struct {
 	ApprovalToken   string          `json:"approval_token,omitempty"`
 }
 
+type ApplyRecreateRequest struct {
+	PlanPath        string                  `json:"plan_path,omitempty"`
+	Plan            *lifecycle.RecreatePlan `json:"plan,omitempty"`
+	ConfirmPlanHash string                  `json:"confirm_plan_hash"`
+	ApprovalToken   string                  `json:"approval_token,omitempty"`
+}
+
 type RestoreXMLRequest struct {
 	BackupPath          string `json:"backup_path"`
 	TargetPath          string `json:"target_path"`
@@ -227,6 +234,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /v1/plan/recreate", s.handlePlanRecreate)
 	s.mux.HandleFunc("POST /v1/apply/amud", s.handleApplyAMUD)
 	s.mux.HandleFunc("POST /v1/apply/tz", s.handleApplyTZ)
+	s.mux.HandleFunc("POST /v1/apply/recreate", s.handleApplyRecreate)
 	s.mux.HandleFunc("POST /v1/restore/xml", s.handleRestoreXML)
 }
 
@@ -462,6 +470,38 @@ func (s *Server) handleApplyTZ(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, report)
 }
 
+func (s *Server) handleApplyRecreate(w http.ResponseWriter, r *http.Request) {
+	var request ApplyRecreateRequest
+	if err := s.readJSON(r, &request); err != nil {
+		s.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	plan, err := resolveRecreatePlan(request)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.consumeApproval(plan.PlanHash, request.ApprovalToken); err != nil {
+		s.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	runtime, err := s.runtimeController()
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	report, err := executor.ApplyRecreatePlan(r.Context(), plan, executor.RecreateApplyOptions{
+		ConfirmPlanHash: request.ConfirmPlanHash,
+		AuditDir:        s.config.AuditDir,
+		Runtime:         runtime,
+	})
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, report)
+}
+
 func (s *Server) consumeApproval(planHash string, token string) error {
 	if !s.config.RequireApprovalToken {
 		return nil
@@ -504,6 +544,16 @@ func (s *Server) loadRuntime(ctx context.Context, inspectPath string) ([]dockeri
 		return dockerapi.NewHTTPClient(s.config.DockerHost).InspectAll(ctx)
 	}
 	return nil, errors.New("runtime source is not configured")
+}
+
+func (s *Server) runtimeController() (*dockerapi.Client, error) {
+	if s.config.DockerSocket != "" {
+		return dockerapi.NewUnixSocketClient(s.config.DockerSocket), nil
+	}
+	if s.config.DockerHost != "" {
+		return dockerapi.NewHTTPClient(s.config.DockerHost), nil
+	}
+	return nil, errors.New("Docker runtime source is not configured")
 }
 
 func (s *Server) hasRuntimeSource(inspectPath string) bool {
@@ -618,6 +668,16 @@ func resolveTZPlan(request ApplyTZRequest) (planner.TZPlan, error) {
 		return planner.TZPlan{}, errors.New("plan or plan_path is required")
 	}
 	return executor.ReadTZPlanFile(request.PlanPath)
+}
+
+func resolveRecreatePlan(request ApplyRecreateRequest) (lifecycle.RecreatePlan, error) {
+	if request.Plan != nil {
+		return *request.Plan, nil
+	}
+	if request.PlanPath == "" {
+		return lifecycle.RecreatePlan{}, errors.New("plan or plan_path is required")
+	}
+	return executor.ReadRecreatePlanFile(request.PlanPath)
 }
 
 func (s *Server) readJSON(r *http.Request, target any) error {

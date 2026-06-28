@@ -100,6 +100,8 @@ func run(args []string) error {
 		return runApplyAMUDPlan(args[1:])
 	case "apply-tz-plan":
 		return runApplyTZPlan(args[1:])
+	case "apply-recreate-plan":
+		return runApplyRecreatePlan(args[1:])
 	case "restore-xml-backup":
 		return runRestoreXMLBackup(args[1:])
 	case "help", "-h", "--help":
@@ -510,6 +512,51 @@ func runApplyTZPlan(args []string) error {
 		return printJSON(report)
 	}
 	printTZApplyReport(report)
+	return nil
+}
+
+func runApplyRecreatePlan(args []string) error {
+	flags := flag.NewFlagSet("apply-recreate-plan", flag.ContinueOnError)
+	planPath := flags.String("plan", "", "Path to exported recreate plan JSON.")
+	confirmPlanHash := flags.String("confirm-plan-hash", "", "Exact plan hash required to apply.")
+	auditDir := flags.String("audit-dir", "", "Directory for recreate audit JSON logs.")
+	dockerSocket := flags.String("docker-socket", "", "Docker unix socket path, e.g. /var/run/docker.sock.")
+	dockerHost := flags.String("docker-host", "", "Docker HTTP API endpoint. Use only for trusted local/proxy endpoints.")
+	rebuildScript := flags.String("rebuild-script", executor.DefaultDockerManRebuildScript, "Absolute path to DockerMan rebuild_container script.")
+	jsonOutput := flags.Bool("json", false, "Print machine-readable JSON report.")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if *planPath == "" {
+		return errors.New("--plan is required")
+	}
+	if (*dockerSocket == "") == (*dockerHost == "") {
+		return errors.New("exactly one runtime source is required: --docker-socket or --docker-host")
+	}
+
+	plan, err := executor.ReadRecreatePlanFile(*planPath)
+	if err != nil {
+		return fmt.Errorf("read recreate plan: %w", err)
+	}
+	var runtime *dockerapi.Client
+	if *dockerSocket != "" {
+		runtime = dockerapi.NewUnixSocketClient(*dockerSocket)
+	} else {
+		runtime = dockerapi.NewHTTPClient(*dockerHost)
+	}
+	report, err := executor.ApplyRecreatePlan(context.Background(), plan, executor.RecreateApplyOptions{
+		ConfirmPlanHash: *confirmPlanHash,
+		AuditDir:        *auditDir,
+		RebuildScript:   *rebuildScript,
+		Runtime:         runtime,
+	})
+	if err != nil {
+		return err
+	}
+	if *jsonOutput {
+		return printJSON(report)
+	}
+	printRecreateApplyReport(report)
 	return nil
 }
 
@@ -945,6 +992,37 @@ func printTZApplyReport(report executor.TZApplyReport) {
 	}
 }
 
+func printRecreateApplyReport(report executor.RecreateApplyReport) {
+	fmt.Println("Docker recreate apply report")
+	fmt.Printf("Plan hash:      %s\n", report.PlanHash)
+	fmt.Printf("Audit dir:      %s\n", report.AuditDir)
+	fmt.Printf("Rebuild script: %s\n", report.RebuildScript)
+	fmt.Printf("OK:             %t\n", report.OK)
+	if report.FailureCount > 0 {
+		fmt.Printf("Failures:       %d\n", report.FailureCount)
+	}
+	fmt.Println()
+	for _, result := range report.Results {
+		status := "rebuilt"
+		if result.Error != "" {
+			status = "failed"
+		}
+		fmt.Printf("- %s: %s\n", result.Container, status)
+		if result.StateBefore != "" || result.StateAfter != "" {
+			fmt.Printf("  State: %s -> %s\n", valueOrDash(result.StateBefore), valueOrDash(result.StateAfter))
+		}
+		if result.WasRunning && result.StartedAfter {
+			fmt.Println("  Started again because it was running before recreate.")
+		}
+		if len(result.RuntimeAMUDLabels) > 0 {
+			fmt.Printf("  AMUD: %s\n", amudLabelSummary(result.RuntimeAMUDLabels))
+		}
+		if result.Error != "" {
+			fmt.Printf("  Error: %s\n", result.Error)
+		}
+	}
+}
+
 func printRestoreReport(report executor.RestoreXMLReport) {
 	fmt.Println("XML restore report")
 	fmt.Printf("Backup:              %s\n", report.BackupPath)
@@ -968,6 +1046,7 @@ func printUsage() {
 	fmt.Println("  unraid-ai-manager approve-plan --plan plan.json --approvals-dir PATH [--purpose amud] [--ttl 15m] [--json]")
 	fmt.Println("  unraid-ai-manager apply-amud-plan --plan plan.json --confirm-plan-hash HASH --backup-dir PATH --audit-dir PATH [--json]")
 	fmt.Println("  unraid-ai-manager apply-tz-plan --plan plan.json --confirm-plan-hash HASH --backup-dir PATH --audit-dir PATH [--json]")
+	fmt.Println("  unraid-ai-manager apply-recreate-plan --plan plan.json --confirm-plan-hash HASH --audit-dir PATH (--docker-socket /var/run/docker.sock | --docker-host URL) [--json]")
 	fmt.Println("  unraid-ai-manager restore-xml-backup --backup backup.xml --target template.xml --confirm-backup-sha256 HASH --pre-restore-backup-dir PATH --audit-dir PATH [--json]")
 }
 

@@ -95,6 +95,11 @@ func (c *Client) InspectContainer(ctx context.Context, id string) (dockerinspect
 	return containers[0], nil
 }
 
+func (c *Client) StartContainer(ctx context.Context, id string) error {
+	_, err := c.post(ctx, "/containers/"+id+"/start", nil)
+	return err
+}
+
 func (c *Client) get(ctx context.Context, path string) ([]byte, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
 	if err != nil {
@@ -112,6 +117,27 @@ func (c *Client) get(ctx context.Context, path string) ([]byte, error) {
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, fmt.Errorf("Docker API GET %s failed: HTTP %d: %s", path, response.StatusCode, strings.TrimSpace(string(payload)))
+	}
+	return payload, nil
+}
+
+func (c *Client) post(ctx context.Context, path string, body io.Reader) ([]byte, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, body)
+	if err != nil {
+		return nil, err
+	}
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+
+	payload, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, fmt.Errorf("Docker API POST %s failed: HTTP %d: %s", path, response.StatusCode, strings.TrimSpace(string(payload)))
 	}
 	return payload, nil
 }

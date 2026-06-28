@@ -54,7 +54,7 @@ Bezpečnostní hranice je helper daemon na Unraidu. Ten musí vynucovat:
 - odmítnutí nebezpečných mountů a privilegovaných operací;
 - oddělení read-only inspect akcí od write/lifecycle akcí.
 
-## Aktuální stav v `v0.1.3`
+## Aktuální stav v `v0.1.4`
 
 Implementováno:
 
@@ -69,12 +69,13 @@ Implementováno:
 - read-only Docker API inspect;
 - XML vs runtime comparison;
 - read-only recreate planner;
+- schvalovaný DockerMan recreate apply workflow;
 - approval-token store.
 
 Zatím neimplementováno:
 
 - instalace kontejnerů z Community Applications;
-- skutečný recreate/start/stop/remove kontejnerů;
+- libovolné start/stop/remove lifecycle operace;
 - vytvoření nového kontejneru;
 - Unraid shares/VM/plugin/array management;
 - bezpečný Docker lifecycle proxy.
@@ -162,7 +163,7 @@ Raw Docker create bude až fallback pro custom kontejnery mimo Community Applica
 
 ## Recreate a lifecycle plán
 
-Recreate bude později samostatná write operace s extra schválením.
+Recreate je implementovaný jako samostatná write operace s extra schválením. Helper negeneruje raw Docker příkazy; pro kontejnery ve schváleném recreate plánu volá Unraid DockerMan `rebuild_container`.
 
 Minimální požadavky:
 
@@ -170,6 +171,7 @@ Minimální požadavky:
 - hashovaný lifecycle plán;
 - potvrzení uživatelem;
 - žádné změny mimo schválený plán;
+- pouze DockerMan `rebuild_container`, ne shell dodaný AI;
 - inspect po akci;
 - audit log;
 - jasné hlášení, pokud container po recreate nenaběhne.

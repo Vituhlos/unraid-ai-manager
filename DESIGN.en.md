@@ -54,7 +54,7 @@ The Unraid-side helper daemon is the enforcement point. It must enforce:
 - rejection of dangerous mounts and privileged operations;
 - separation between read-only inspect actions and write/lifecycle actions.
 
-## Current status in `v0.1.3`
+## Current status in `v0.1.4`
 
 Implemented:
 
@@ -69,12 +69,13 @@ Implemented:
 - read-only Docker API inspect;
 - XML vs runtime comparison;
 - read-only recreate planner;
+- approved DockerMan recreate apply workflow;
 - approval-token store.
 
 Not implemented yet:
 
 - Community Applications container installation;
-- actual recreate/start/stop/remove lifecycle operations;
+- arbitrary start/stop/remove lifecycle operations;
 - new container creation;
 - Unraid shares/VM/plugin/array management;
 - safe Docker lifecycle proxy.
@@ -162,7 +163,7 @@ Raw Docker create is only a fallback for custom containers outside Community App
 
 ## Recreate and lifecycle plan
 
-Recreate will later be a separate write operation with extra approval.
+Recreate is implemented as a separate write operation with extra approval. It does not generate raw Docker commands. The helper calls Unraid DockerMan `rebuild_container` for containers present in the approved recreate plan.
 
 Minimum requirements:
 
@@ -170,6 +171,7 @@ Minimum requirements:
 - hashed lifecycle plan;
 - user confirmation;
 - no changes outside the approved plan;
+- DockerMan `rebuild_container` only, not AI-provided shell;
 - inspect after the action;
 - audit log;
 - clear error reporting if the container does not start after recreate.

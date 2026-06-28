@@ -139,6 +139,21 @@ const tools = [
     },
   },
   {
+    name: "unraid_apply_recreate",
+    description: "Apply a previously reviewed recreate plan using Unraid DockerMan rebuild_container. Requires exact confirm_plan_hash.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        plan_path: { type: "string" },
+        plan: { type: "object" },
+        confirm_plan_hash: { type: "string" },
+        approval_token: { type: "string" },
+      },
+      required: ["confirm_plan_hash"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "unraid_restore_xml",
     description: "Restore a DockerMan XML template from backup. Requires exact backup SHA256.",
     inputSchema: {
@@ -167,6 +182,7 @@ const toolHandlers = {
   unraid_plan_tz: (args) => helperPost("/v1/plan/tz", args || {}),
   unraid_apply_tz: (args) => helperPost("/v1/apply/tz", args || {}),
   unraid_plan_recreate: (args) => helperPost("/v1/plan/recreate", args || {}),
+  unraid_apply_recreate: (args) => helperPost("/v1/apply/recreate", args || {}),
   unraid_restore_xml: (args) => helperPost("/v1/restore/xml", args || {}),
 };
 
@@ -242,7 +258,7 @@ async function dispatch(method, params) {
         },
         serverInfo: {
           name: "unraid-ai-manager",
-          version: "0.1.3",
+          version: "0.1.4",
         },
       };
     case "tools/list":

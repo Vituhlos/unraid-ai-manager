@@ -47,7 +47,8 @@ These operations must remain blocked or require explicit extra approval:
 - whole `/mnt` or `/mnt/user` mounts;
 - host networking;
 - arbitrary device and capability additions;
-- container recreate/start/stop/remove operations;
+- arbitrary container start/stop/remove operations;
+- container recreate outside an approved DockerMan recreate plan;
 - Community Applications installation;
 - plugin installation;
 - disk, array, VM or share destructive actions.

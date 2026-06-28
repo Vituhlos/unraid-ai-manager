@@ -8,6 +8,20 @@ Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-06-28
+
+### Added
+
+- Přidán schvalovaný Docker recreate apply workflow, který whitelistovaně volá Unraid DockerMan `rebuild_container` místo generování raw Docker příkazů.
+- Přidán helper API endpoint `POST /v1/apply/recreate` a MCP tool `unraid_apply_recreate`.
+- Přidán CLI příkaz `apply-recreate-plan`.
+- Recreate apply zapisuje audit log, ověřuje runtime stav přes Docker inspect a znovu nastartuje container, pokud před rebuildem běžel, ale DockerMan ho nechá zastavený.
+
+### Security
+
+- Recreate apply před spuštěním čehokoliv validuje jména kontejnerů a cestu k DockerMan rebuild scriptu.
+- Recreate apply pořád vyžaduje přesný hash plánu a při zapnutém režimu také krátkodobý approval token.
+
 ## [0.1.3] - 2026-06-28
 
 ### Changed
@@ -83,7 +97,8 @@ Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0
 - Helper se defaultně binduje na `127.0.0.1:37231`.
 - Helper podporuje autentizaci přes API key.
 
-[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.0...v0.1.1

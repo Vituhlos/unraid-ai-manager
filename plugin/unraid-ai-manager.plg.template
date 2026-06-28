@@ -21,6 +21,7 @@
   - Add Settings page for helper configuration and API key generation.
   - Add rc script for start/stop/restart/status.
   - Use appdata-backed backups, plans, approvals and audit logs.
+  - Support approved DockerMan recreate apply operations through rebuild_container.
   - See the GitHub changelog for complete release notes.
   </CHANGES>
 

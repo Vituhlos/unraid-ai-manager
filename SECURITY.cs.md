@@ -47,7 +47,8 @@ Tyto operace musí zůstat blokované nebo vyžadovat explicitní extra schvále
 - mount celého `/mnt` nebo `/mnt/user`;
 - host networking;
 - libovolné devices a capabilities;
-- recreate/start/stop/remove kontejnerů;
+- libovolné start/stop/remove operace kontejnerů;
+- recreate kontejnerů mimo schválený DockerMan recreate plán;
 - instalace Community Applications;
 - instalace pluginů;
 - destruktivní diskové, array, VM nebo share operace.

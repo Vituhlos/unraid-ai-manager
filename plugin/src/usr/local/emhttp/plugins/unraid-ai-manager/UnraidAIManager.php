@@ -167,6 +167,12 @@ $keyPreview = $hasKey ? substr($cfg["API_KEY"], 0, 8) . "..." . substr($cfg["API
   --approvals-dir <?= uaim_h($cfg["APPROVALS_DIR"]) ?> \
   --purpose amud \
   --ttl 15m
+
+/usr/local/bin/unraid-ai-manager apply-recreate-plan \
+  --plan <?= uaim_h($cfg["PLANS_DIR"]) ?>/RECREATE_PLAN.json \
+  --confirm-plan-hash HASH \
+  --docker-socket <?= uaim_h($cfg["DOCKER_SOCKET"]) ?> \
+  --audit-dir <?= uaim_h($cfg["AUDIT_DIR"]) ?>
   </pre>
 
   <h3>PC connection</h3>

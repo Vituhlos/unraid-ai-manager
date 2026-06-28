@@ -4,7 +4,7 @@ Bezpečná automatizace Unraidu pro AI asistenty.
 
 Unraid AI Manager je lokální control-plane pro správu Unraid DockerMan šablon přes přísný workflow plán → diff → schválení → aplikace. Je navržený pro AI/MCP klienty, ale bezpečnostní hranice není chat s AI. Bezpečnostní hranice je helper daemon běžící lokálně na Unraidu.
 
-> Aktuální stav: `v0.1.3` je rané preview. Umí načíst DockerMan XML šablony, přečíst runtime stav Dockeru, naplánovat AMUD/TZ/template změny, aplikovat schválené XML úpravy se zálohami a auditem a vystavit tyto akce přes MCP server. Instalace Community Applications a reálné lifecycle akce kontejnerů jsou zatím plánované, ne implementované.
+> Aktuální stav: `v0.1.4` je rané preview. Umí načíst DockerMan XML šablony, přečíst runtime stav Dockeru, naplánovat AMUD/TZ/template změny, aplikovat schválené XML úpravy se zálohami a auditem, aplikovat schválené DockerMan recreate plány a vystavit tyto akce přes MCP server. Instalace Community Applications a libovolný lifecycle management kontejnerů jsou zatím plánované, ne implementované.
 
 ## Jazyky
 
@@ -35,6 +35,7 @@ Unraid AI Manager je lokální control-plane pro správu Unraid DockerMan šablo
 - Umí explicitně zahrnout TCP port-only šablony nebo omezit/vyloučit konkrétní kontejnery.
 - Helper/MCP planning při dostupném Docker runtime přístupu defaultně filtruje na aktuálně běžící Docker containery.
 - Plánuje a aplikuje změny env proměnné `TZ`.
+- Plánuje a aplikuje schválené Docker recreate operace přes Unraid DockerMan `rebuild_container`.
 - Před každým zápisem vytváří XML backup.
 - Před aplikací vyžaduje hash plánu.
 - Volitelně vyžaduje krátkodobý lokální approval token.
@@ -45,7 +46,8 @@ Unraid AI Manager je lokální control-plane pro správu Unraid DockerMan šablo
 ## Co záměrně zatím neumí
 
 - Zatím neinstaluje kontejnery z Community Applications.
-- Zatím nerecreatuje, nestartuje, nezastavuje ani nemaže kontejnery.
+- Zatím nedělá libovolné start/stop/remove operace.
+- Recreate kontejnerů dělá jen ze schváleného recreate plánu přes Unraid DockerMan.
 - Nepřijímá raw shell příkazy od AI.
 - Nevystavuje neomezený Docker socket MCP klientům.
 - Nemountuje celý host filesystem do AI řízeného kontejneru.
@@ -134,6 +136,7 @@ Dostupné MCP tools:
 - `unraid_plan_tz`
 - `unraid_apply_tz`
 - `unraid_plan_recreate`
+- `unraid_apply_recreate`
 - `unraid_restore_xml`
 
 Apply tools vyžadují `confirm_plan_hash`. Pokud jsou zapnuté approval tokeny, vyžadují i `approval_token`.
@@ -155,6 +158,7 @@ unraid-ai-manager approve-plan \
 
 5. Nech AI zavolat apply tool s hashem plánu a tokenem.
 6. Ověř audit log a výsledné XML.
+7. Pokud změna ovlivňuje živý Docker runtime, vytvoř a schval recreate plán, aby DockerMan rebuildnul container z upraveného XML.
 
 ## Ruční CLI příklady
 
@@ -192,6 +196,16 @@ unraid-ai-manager apply-amud-plan \
   --approval-token <approval_token> \
   --approvals-dir /mnt/user/appdata/unraid-ai-manager/approvals \
   --backup-dir /mnt/user/appdata/unraid-ai-manager/backups \
+  --audit-dir /mnt/user/appdata/unraid-ai-manager/audit
+```
+
+Aplikace schváleného recreate plánu:
+
+```bash
+unraid-ai-manager apply-recreate-plan \
+  --plan /mnt/user/appdata/unraid-ai-manager/plans/recreate-plan.json \
+  --confirm-plan-hash <plan_hash> \
+  --docker-socket /var/run/docker.sock \
   --audit-dir /mnt/user/appdata/unraid-ai-manager/audit
 ```
 

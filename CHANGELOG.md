@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-06-28
+
+### Added
+
+- Added an approved Docker recreate apply workflow that calls Unraid DockerMan `rebuild_container` from a whitelist instead of generating raw Docker commands.
+- Added `POST /v1/apply/recreate` to the helper API and `unraid_apply_recreate` to the MCP server.
+- Added `apply-recreate-plan` to the CLI.
+- Recreate apply now records an audit log, verifies runtime state through Docker inspect, and starts a container again when it was running before the rebuild but DockerMan leaves it stopped.
+
+### Security
+
+- Recreate apply validates container names and the DockerMan rebuild script path before executing anything.
+- Recreate apply still requires the exact plan hash and, when enabled, a short-lived approval token.
+
 ## [0.1.3] - 2026-06-28
 
 ### Changed
@@ -81,7 +95,8 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 - The helper binds to `127.0.0.1:37231` by default.
 - The helper supports API-key authentication.
 
-[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.0...v0.1.1
