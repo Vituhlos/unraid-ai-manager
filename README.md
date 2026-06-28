@@ -251,6 +251,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\package-unraid-plugin.ps1
 
 Outputs are written to `dist/`.
 
+GitHub Actions also runs the same checks and packaging on pushes and pull requests.
+
 ## Release version
 
 The canonical project version is stored in [VERSION](VERSION).
@@ -258,6 +260,7 @@ The canonical project version is stored in [VERSION](VERSION).
 - Git tags use `vMAJOR.MINOR.PATCH`.
 - Unraid plugin/package versions use `MAJOR.MINOR.PATCH`.
 - Release notes are maintained in [CHANGELOG.md](CHANGELOG.md).
+- Pushing a `vMAJOR.MINOR.PATCH` tag or manually running the Release workflow builds the Unraid plugin package and publishes GitHub Release assets.
 
 See [VERSIONING.md](VERSIONING.md) for the full policy.
 

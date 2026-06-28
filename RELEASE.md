@@ -12,6 +12,8 @@ Use this checklist for every GitHub and Unraid plugin release.
 
 ## 2. Validate
 
+GitHub Actions runs these checks automatically on pushes and pull requests. Run them locally before tagging when the change is risky:
+
 ```powershell
 & ".\.tools\go\go1.26.4\go\bin\go.exe" test ./...
 node --check .\mcp\unraid-mcp-server.mjs
@@ -36,9 +38,15 @@ git push origin main
 git push origin v<version>
 ```
 
+Pushing the tag triggers the GitHub Actions Release workflow, which builds and uploads the release assets.
+
 ## 4. Publish GitHub release
 
-Create the release from the changelog entry. Upload:
+Preferred: let GitHub Actions publish the release from the pushed tag.
+
+Fallback: run the Release workflow manually with `tag=v<version>`.
+
+Manual emergency fallback: create the release from the changelog entry and upload:
 
 - `dist/unraid-ai-manager.plg`
 - `dist/unraid-ai-manager-<version>-x86_64-1.txz`

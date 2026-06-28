@@ -1,0 +1,126 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build, for example v0.1.4"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: windows-latest
+
+    steps:
+      - name: Resolve release tag
+        id: release
+        shell: powershell
+        run: |
+          $tag = "${{ inputs.tag }}"
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            $tag = "${{ github.ref_name }}"
+          }
+          if ($tag -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
+            throw "Release tag must look like vMAJOR.MINOR.PATCH. Got: $tag"
+          }
+          $version = $tag.Substring(1)
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "RELEASE_TAG=$tag" >> $env:GITHUB_ENV
+          "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Check out release ref
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Verify VERSION matches tag
+        shell: powershell
+        run: |
+          $version = (Get-Content -Raw VERSION).Trim()
+          if ($version -ne $env:RELEASE_VERSION) {
+            throw "VERSION ($version) does not match release tag ($env:RELEASE_VERSION)"
+          }
+
+      - name: Run Go tests
+        run: go test ./...
+
+      - name: Check MCP server syntax
+        run: node --check .\mcp\unraid-mcp-server.mjs
+
+      - name: Build Unraid plugin artifacts
+        shell: powershell
+        run: |
+          $goExe = (Get-Command go).Source
+          .\scripts\package-unraid-plugin.ps1 -Version $env:RELEASE_VERSION -ReleaseTag $env:RELEASE_TAG -GoExe $goExe
+
+      - name: Validate Unraid plugin artifact
+        shell: powershell
+        run: .\scripts\validate-unraid-plugin.ps1
+
+      - name: Extract release notes
+        shell: powershell
+        run: |
+          $version = [regex]::Escape($env:RELEASE_VERSION)
+          $lines = Get-Content CHANGELOG.md
+          $start = -1
+          for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match "^## \[$version\]") {
+              $start = $i
+              break
+            }
+          }
+          if ($start -lt 0) {
+            throw "Could not find CHANGELOG.md section for $env:RELEASE_VERSION"
+          }
+          $end = $lines.Count
+          for ($i = $start + 1; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^## \[') {
+              $end = $i
+              break
+            }
+          }
+          $notes = $lines[($start + 1)..($end - 1)] -join "`n"
+          $notes.Trim() | Set-Content -LiteralPath release-notes.md -Encoding UTF8
+
+      - name: Publish GitHub Release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = @(
+            "dist/unraid-ai-manager.plg",
+            "dist/unraid-ai-manager-$env:RELEASE_VERSION-x86_64-1.txz",
+            "dist/unraid-ai-manager-$env:RELEASE_VERSION-x86_64-1.txz.sha256",
+            "dist/unraid-ai-manager-linux-amd64",
+            "dist/unraid-ai-manager-linux-amd64.sha256",
+            "dist/unraid-ai-helper-linux-amd64",
+            "dist/unraid-ai-helper-linux-amd64.sha256"
+          )
+          foreach ($asset in $assets) {
+            if (-not (Test-Path -LiteralPath $asset)) {
+              throw "Missing release asset: $asset"
+            }
+          }
+
+          gh release view $env:RELEASE_TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release edit $env:RELEASE_TAG --title $env:RELEASE_TAG --notes-file release-notes.md --latest
+            gh release upload $env:RELEASE_TAG @assets --clobber
+          } else {
+            gh release create $env:RELEASE_TAG @assets --title $env:RELEASE_TAG --notes-file release-notes.md --latest --verify-tag
+          }

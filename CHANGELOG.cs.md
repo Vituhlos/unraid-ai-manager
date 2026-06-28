@@ -8,6 +8,11 @@ Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+### Added
+
+- Přidána GitHub Actions CI pro Go testy, MCP syntax check, balení Unraid pluginu a validaci pluginu.
+- Přidána GitHub Actions release automatizace pro tagy `vMAJOR.MINOR.PATCH` a ruční release dispatch.
+
 ## [0.1.4] - 2026-06-28
 
 ### Added

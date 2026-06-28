@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Added
+
+- Added GitHub Actions CI for Go tests, MCP syntax checks, Unraid plugin packaging and plugin validation.
+- Added GitHub Actions release automation for `vMAJOR.MINOR.PATCH` tags and manual release dispatches.
+
 ## [0.1.4] - 2026-06-28
 
 ### Added

@@ -12,6 +12,8 @@ Tento checklist používej pro každý GitHub a Unraid plugin release.
 
 ## 2. Validace
 
+GitHub Actions tyto kontroly pouští automaticky při pushi a pull requestech. Lokálně je spusť před tagováním hlavně u rizikovějších změn:
+
 ```powershell
 & ".\.tools\go\go1.26.4\go\bin\go.exe" test ./...
 node --check .\mcp\unraid-mcp-server.mjs
@@ -36,9 +38,15 @@ git push origin main
 git push origin v<version>
 ```
 
+Push tagu spustí GitHub Actions Release workflow, který sestaví a nahraje release assets.
+
 ## 4. Publikace GitHub releasu
 
-Release notes vezmi z changelogu. Nahraj:
+Preferovaně: nech GitHub Actions publikovat release z pushnutého tagu.
+
+Fallback: spusť Release workflow ručně s `tag=v<version>`.
+
+Nouzový ruční fallback: vytvoř release z changelogu a nahraj:
 
 - `dist/unraid-ai-manager.plg`
 - `dist/unraid-ai-manager-<version>-x86_64-1.txz`

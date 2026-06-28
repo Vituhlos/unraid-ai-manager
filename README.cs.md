@@ -251,6 +251,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\package-unraid-plugin.ps1
 
 Výstupy jsou v `dist/`.
 
+GitHub Actions pouští stejné kontroly a balení při pushi a pull requestech.
+
 ## Release verze
 
 Kanonická verze projektu je v [VERSION](VERSION).
@@ -258,6 +260,7 @@ Kanonická verze projektu je v [VERSION](VERSION).
 - Git tagy používají `vMAJOR.MINOR.PATCH`.
 - Unraid plugin/package verze používají `MAJOR.MINOR.PATCH`.
 - Release notes jsou v [CHANGELOG.cs.md](CHANGELOG.cs.md).
+- Push tagu `vMAJOR.MINOR.PATCH` nebo ruční spuštění Release workflow postaví Unraid plugin package a publikuje assets do GitHub Release.
 
 Celá politika je ve [VERSIONING.cs.md](VERSIONING.cs.md).
 
