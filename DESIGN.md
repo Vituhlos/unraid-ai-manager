@@ -34,6 +34,7 @@ HTTP helper na Unraidu
         |
         +--> DockerMan XML templates-user
         +--> read-only Docker API
+        +--> dashboard provider adaptery
         +--> backupy
         +--> audit logy
         +--> approval token store
@@ -54,7 +55,7 @@ Bezpečnostní hranice je helper daemon na Unraidu. Ten musí vynucovat:
 - odmítnutí nebezpečných mountů a privilegovaných operací;
 - oddělení read-only inspect akcí od write/lifecycle akcí.
 
-## Aktuální stav v `v0.1.4`
+## Aktuální stav v `v0.1.5`
 
 Implementováno:
 
@@ -63,7 +64,8 @@ Implementováno:
 - Node MCP server `mcp/unraid-mcp-server.mjs`;
 - Unraid plugin wrapper se Settings stránkou;
 - DockerMan XML parser;
-- AMUD planner a apply workflow;
+- obecný dashboard plan/apply workflow s AMUD jako prvním provider adapterem;
+- AMUD compatibility planner a apply workflow;
 - TZ planner a apply workflow;
 - XML backup, audit a restore;
 - read-only Docker API inspect;
@@ -79,6 +81,41 @@ Zatím neimplementováno:
 - vytvoření nového kontejneru;
 - Unraid shares/VM/plugin/array management;
 - bezpečný Docker lifecycle proxy.
+
+## Capability model
+
+Helper je bezpečný Unraid control plane, ne dashboard-specific daemon. AI klient má začít tím, že si načte `/v1/capabilities`, potom inventory/runtime stav a teprve pak vytvoří plán pro jednu pojmenovanou capability.
+
+Implementované capabilities jsou úzké a pojmenované:
+
+- `inventory`
+- `docker-runtime-inspect`
+- `dashboard-config`
+- `template-env`
+- `docker-recreate`
+- `xml-restore`
+
+Plánované capabilities jsou viditelné zvlášť, například `community-applications` a širší `general-unraid-control`. Klient je uvidí kvůli orientaci, ale mají `access=none-yet` a nejdou aplikovat, dokud pro ně nevznikne explicitní bezpečná implementace.
+
+## Dashboard adapter model
+
+Podpora dashboardů není schválně natvrdo navázaná na AMUD. Helper staví obecný `dashboard-config` plán:
+
+1. Najde služby z DockerMan XML a Docker runtime stavu.
+2. Odvodí metadata služby jako název, URL, ikonu, kategorii a pravděpodobný integration type.
+3. Předá normalizovaný model služby provider adapteru.
+4. Vytvoří provider-specific target changes.
+5. Aplikuje jen schválené target changes přes stejný backup, hash a audit workflow.
+
+První provider je:
+
+```text
+provider = amud
+adapter  = dockerman-labels
+target   = dockerman_xml
+```
+
+Budoucí providery mohou použít stejné core discovery a approval workflow, ale zapisovat jiné cíle, například Homepage Docker labely/YAML, Homarr API data, Dashy YAML nebo databázi/API jiného dashboardu.
 
 ## DockerMan XML pravidla
 

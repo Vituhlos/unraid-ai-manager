@@ -23,6 +23,15 @@ const tools = [
     },
   },
   {
+    name: "unraid_capabilities",
+    description: "Read the helper capability map: implemented and planned safe action modules, providers and access levels.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
     name: "unraid_docker_inspect",
     description: "Read normalized Docker inspect runtime inventory via the helper.",
     inputSchema: {
@@ -46,8 +55,62 @@ const tools = [
     },
   },
   {
+    name: "unraid_plan_dashboard",
+    description: "Create a read-only dashboard configuration plan through a provider adapter. Currently supports provider=amud.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        provider: {
+          type: "string",
+          enum: ["amud"],
+          description: "Dashboard provider adapter. Defaults to amud.",
+        },
+        local_host: { type: "string" },
+        url_mode: { type: "string", enum: ["local", "cloudflare", "hybrid"] },
+        cloudflare_domain: { type: "string" },
+        cloudflare_routes: {
+          type: "object",
+          additionalProperties: { type: "string" },
+        },
+        containers: { type: "array", items: { type: "string" } },
+        exclude_containers: { type: "array", items: { type: "string" } },
+        include_port_only: {
+          type: "boolean",
+          description: "Also include templates without WebUI that only expose a TCP port. Defaults to false.",
+        },
+        runtime_filter: {
+          type: "string",
+          enum: ["templates", "existing", "running"],
+          description: "Filter XML templates by Docker runtime state. Defaults to running when the helper has Docker access.",
+        },
+        inspect_path: {
+          type: "string",
+          description: "Optional path on the helper host to a docker inspect JSON snapshot for runtime filtering.",
+        },
+        include_diffs: { type: "boolean" },
+        save_plan: { type: "boolean" },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "unraid_apply_dashboard",
+    description: "Apply a previously reviewed dashboard plan. Requires exact confirm_plan_hash.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        plan_path: { type: "string" },
+        plan: { type: "object" },
+        confirm_plan_hash: { type: "string" },
+        approval_token: { type: "string" },
+      },
+      required: ["confirm_plan_hash"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "unraid_plan_amud",
-    description: "Create a read-only AMUD label plan and optional XML diffs.",
+    description: "Compatibility shortcut for AMUD Docker label planning. Prefer unraid_plan_dashboard for new workflows.",
     inputSchema: {
       type: "object",
       properties: {
@@ -81,7 +144,7 @@ const tools = [
   },
   {
     name: "unraid_apply_amud",
-    description: "Apply a previously reviewed AMUD plan. Requires exact confirm_plan_hash.",
+    description: "Compatibility shortcut for applying AMUD Docker label plans. Prefer unraid_apply_dashboard for new workflows.",
     inputSchema: {
       type: "object",
       properties: {
@@ -171,12 +234,15 @@ const tools = [
 
 const toolHandlers = {
   unraid_health: () => helperGet("/v1/health"),
+  unraid_capabilities: () => helperGet("/v1/capabilities"),
   unraid_inventory: () => helperGet("/v1/inventory"),
   unraid_docker_inspect: () => helperGet("/v1/docker/inspect"),
   unraid_compare_runtime: (args) => {
     const query = args?.inspect_path ? `?inspect_path=${encodeURIComponent(args.inspect_path)}` : "";
     return helperGet(`/v1/runtime/compare${query}`);
   },
+  unraid_plan_dashboard: (args) => helperPost("/v1/plan/dashboard", args || {}),
+  unraid_apply_dashboard: (args) => helperPost("/v1/apply/dashboard", args || {}),
   unraid_plan_amud: (args) => helperPost("/v1/plan/amud", args || {}),
   unraid_apply_amud: (args) => helperPost("/v1/apply/amud", args || {}),
   unraid_plan_tz: (args) => helperPost("/v1/plan/tz", args || {}),
@@ -258,7 +324,7 @@ async function dispatch(method, params) {
         },
         serverInfo: {
           name: "unraid-ai-manager",
-          version: "0.1.4",
+          version: "0.1.5",
         },
       };
     case "tools/list":

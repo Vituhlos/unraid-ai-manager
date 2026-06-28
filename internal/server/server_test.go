@@ -121,6 +121,163 @@ func TestServerPlanAndApplyAMUD(t *testing.T) {
 	}
 }
 
+func TestServerCapabilities(t *testing.T) {
+	dir := t.TempDir()
+	templatesDir := filepath.Join(dir, "templates")
+	if err := os.MkdirAll(templatesDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	helper, err := New(Config{
+		TemplatesDir: templatesDir,
+		BackupDir:    filepath.Join(dir, "backups"),
+		AuditDir:     filepath.Join(dir, "audit"),
+		APIKey:       "secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(helper.Handler())
+	defer httpServer.Close()
+
+	request, err := http.NewRequest(http.MethodGet, httpServer.URL+"/v1/capabilities", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("X-Unraid-AI-Key", "secret")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", response.StatusCode)
+	}
+	var capabilities CapabilitiesResponse
+	if err := json.NewDecoder(response.Body).Decode(&capabilities); err != nil {
+		t.Fatal(err)
+	}
+	if capabilities.ToolSafety == "" {
+		t.Fatal("missing tool safety summary")
+	}
+	foundDashboard := false
+	foundCommunityApps := false
+	for _, capability := range capabilities.Capabilities {
+		if capability.ID == "dashboard-config" {
+			foundDashboard = true
+			if len(capability.Providers) != 1 || capability.Providers[0] != "amud" {
+				t.Fatalf("unexpected dashboard providers: %#v", capability.Providers)
+			}
+		}
+		if capability.ID == "community-applications" && capability.Status == "planned" {
+			foundCommunityApps = true
+		}
+	}
+	if !foundDashboard || !foundCommunityApps {
+		t.Fatalf("missing expected capabilities: %#v", capabilities.Capabilities)
+	}
+}
+
+func TestServerPlanAndApplyDashboardAMUDAdapter(t *testing.T) {
+	dir := t.TempDir()
+	templatesDir := filepath.Join(dir, "templates")
+	backupDir := filepath.Join(dir, "backups")
+	auditDir := filepath.Join(dir, "audit")
+	plansDir := filepath.Join(dir, "plans")
+	if err := os.MkdirAll(templatesDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	templatePath := filepath.Join(templatesDir, "my-demo.xml")
+	templateXML := `<?xml version="1.0"?>
+<Container version="2">
+  <Name>Demo</Name>
+  <Repository>demo/demo</Repository>
+  <Network>bridge</Network>
+  <Privileged>false</Privileged>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <Config Name="WebUI" Target="8080" Default="8080" Mode="tcp" Type="Port">18080</Config>
+  <TailscaleStateDir/>
+</Container>
+`
+	if err := os.WriteFile(templatePath, []byte(templateXML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	helper, err := New(Config{
+		TemplatesDir: templatesDir,
+		BackupDir:    backupDir,
+		AuditDir:     auditDir,
+		PlansDir:     plansDir,
+		LocalHost:    "192.0.2.10",
+		APIKey:       "secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(helper.Handler())
+	defer httpServer.Close()
+
+	planBody := `{"provider":"amud","include_diffs":true,"save_plan":true}`
+	request, err := http.NewRequest(http.MethodPost, httpServer.URL+"/v1/plan/dashboard", strings.NewReader(planBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("X-Unraid-AI-Key", "secret")
+	request.Header.Set("Content-Type", "application/json")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", response.StatusCode)
+	}
+	var planResponse DashboardPlanResponse
+	if err := json.NewDecoder(response.Body).Decode(&planResponse); err != nil {
+		t.Fatal(err)
+	}
+	if planResponse.Plan.Kind != "dashboard-config" {
+		t.Fatalf("unexpected dashboard plan kind: %s", planResponse.Plan.Kind)
+	}
+	if planResponse.Plan.Provider != "amud" || planResponse.Plan.Adapter != "dockerman-labels" {
+		t.Fatalf("unexpected provider/adapter: %s/%s", planResponse.Plan.Provider, planResponse.Plan.Adapter)
+	}
+	if planResponse.PlanPath == "" {
+		t.Fatal("missing saved dashboard plan path")
+	}
+	if len(planResponse.Diffs) != 1 || !planResponse.Diffs[0].Changed {
+		t.Fatalf("expected one changed diff, got %#v", planResponse.Diffs)
+	}
+
+	applyPayload, err := json.Marshal(ApplyDashboardRequest{
+		PlanPath:        planResponse.PlanPath,
+		ConfirmPlanHash: planResponse.Plan.PlanHash,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyRequest, err := http.NewRequest(http.MethodPost, httpServer.URL+"/v1/apply/dashboard", bytes.NewReader(applyPayload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyRequest.Header.Set("X-Unraid-AI-Key", "secret")
+	applyRequest.Header.Set("Content-Type", "application/json")
+	applyResponse, err := http.DefaultClient.Do(applyRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer applyResponse.Body.Close()
+	if applyResponse.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 apply, got %d", applyResponse.StatusCode)
+	}
+	modified, err := os.ReadFile(templatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(modified), `Target="amud.url"`) {
+		t.Fatal("dashboard AMUD adapter did not apply AMUD URL")
+	}
+}
+
 func TestServerApplyRequiresApprovalToken(t *testing.T) {
 	dir := t.TempDir()
 	templatesDir := filepath.Join(dir, "templates")

@@ -8,10 +8,24 @@ Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-06-28
+
 ### Added
 
+- Přidán obecný dashboard planning model (`dashboard-config`), takže AMUD je nově první dashboard provider adapter, ne jediný dashboard koncept v architektuře.
+- Přidány helper API endpointy `POST /v1/plan/dashboard` a `POST /v1/apply/dashboard`.
+- Přidán helper API endpoint `GET /v1/capabilities`, aby AI klienti mohli zjistit implementované a plánované bezpečné moduly akcí.
+- Přidány MCP tools `unraid_capabilities`, `unraid_plan_dashboard` a `unraid_apply_dashboard`.
+- Přidány CLI příkazy `plan-dashboard` a `apply-dashboard-plan`.
+- Přidáno odvozování service metadat v dashboard plánech: display name, slug, icon, category a pravděpodobný integration type.
+- Přidány testy pro obecný dashboard planner a helper flow AMUD adapteru.
 - Přidána GitHub Actions CI pro Go testy, MCP syntax check, balení Unraid pluginu a validaci pluginu.
 - Přidána GitHub Actions release automatizace pro tagy `vMAJOR.MINOR.PATCH` a ruční release dispatch.
+
+### Changed
+
+- `unraid_plan_amud`, `unraid_apply_amud`, `plan-amud` a `apply-amud-plan` jsou nově compatibility zkratky. Nové workflow má používat obecné dashboard API/tooly s `provider=amud`.
+- Dokumentace nově popisuje Unraid AI Manager jako obecný Unraid automation control plane s dashboard provider adaptery.
 
 ## [0.1.4] - 2026-06-28
 
@@ -102,7 +116,8 @@ Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0
 - Helper se defaultně binduje na `127.0.0.1:37231`.
 - Helper podporuje autentizaci přes API key.
 
-[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.1...v0.1.2

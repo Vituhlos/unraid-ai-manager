@@ -4,7 +4,7 @@ Bezpečná automatizace Unraidu pro AI asistenty.
 
 Unraid AI Manager je lokální control-plane pro správu Unraid DockerMan šablon přes přísný workflow plán → diff → schválení → aplikace. Je navržený pro AI/MCP klienty, ale bezpečnostní hranice není chat s AI. Bezpečnostní hranice je helper daemon běžící lokálně na Unraidu.
 
-> Aktuální stav: `v0.1.4` je rané preview. Umí načíst DockerMan XML šablony, přečíst runtime stav Dockeru, naplánovat AMUD/TZ/template změny, aplikovat schválené XML úpravy se zálohami a auditem, aplikovat schválené DockerMan recreate plány a vystavit tyto akce přes MCP server. Instalace Community Applications a libovolný lifecycle management kontejnerů jsou zatím plánované, ne implementované.
+> Aktuální stav: `v0.1.5` je rané preview. Umí načíst DockerMan XML šablony, přečíst runtime stav Dockeru, naplánovat obecné dashboard/TZ/template změny, aplikovat schválené XML úpravy se zálohami a auditem, aplikovat schválené DockerMan recreate plány a vystavit tyto akce přes MCP server. AMUD je první dashboard adapter. Instalace Community Applications a libovolný lifecycle management kontejnerů jsou zatím plánované, ne implementované.
 
 ## Jazyky
 
@@ -19,19 +19,20 @@ Unraid AI Manager je lokální control-plane pro správu Unraid DockerMan šablo
 ## Co nástroj umí
 
 - Čte Unraid DockerMan XML šablony z `/boot/config/plugins/dockerMan/templates-user`.
+- Vystavuje capability mapu, aby AI klient nejdřív zjistil bezpečné hotové/plánované moduly akcí.
 - Parsuje porty, cesty, proměnné, labely, WebUI, metadata šablony a repository.
 - Čte runtime stav Dockeru přes read-only Docker API volání.
 - Porovnává DockerMan XML šablony s živou konfigurací kontejnerů.
-- Navrhuje AMUD labely:
+- Plánuje konfiguraci dashboardů přes provider adaptery. První adapter je AMUD přes DockerMan labely:
   - `amud.enable=true`
   - `amud.url=...`
   - `amud.name=...`
   - `amud.icon=...`
-- Podporuje AMUD URL režimy:
+- Podporuje dashboard URL režimy:
   - `local`: `http://<local_host>:<host_port>`
   - `cloudflare`: `https://<subdomain>.<domain>`
   - `hybrid`: Cloudflare, pokud existuje route, jinak local
-- Defaultně plánuje AMUD labely jen pro DockerMan šablony s explicitním `WebUI`.
+- Defaultně plánuje dashboard záznamy jen pro DockerMan šablony s explicitním `WebUI`.
 - Umí explicitně zahrnout TCP port-only šablony nebo omezit/vyloučit konkrétní kontejnery.
 - Helper/MCP planning při dostupném Docker runtime přístupu defaultně filtruje na aktuálně běžící Docker containery.
 - Plánuje a aplikuje změny env proměnné `TZ`.
@@ -128,9 +129,12 @@ Příklad konfigurace MCP klienta:
 Dostupné MCP tools:
 
 - `unraid_health`
+- `unraid_capabilities`
 - `unraid_inventory`
 - `unraid_docker_inspect`
 - `unraid_compare_runtime`
+- `unraid_plan_dashboard`
+- `unraid_apply_dashboard`
 - `unraid_plan_amud`
 - `unraid_apply_amud`
 - `unraid_plan_tz`
@@ -141,10 +145,10 @@ Dostupné MCP tools:
 
 Apply tools vyžadují `confirm_plan_hash`. Pokud jsou zapnuté approval tokeny, vyžadují i `approval_token`.
 
-## Bezpečný AMUD workflow
+## Bezpečný dashboard workflow
 
 1. Řekni AI, ať vytvoří plán, ne ať ho rovnou aplikuje.
-2. Zkontroluj navržené labely, URL, rizika a XML diff.
+2. Zkontroluj navržený provider, adapter, URL, target changes, rizika a XML diff.
 3. Potvrď přesný `plan_hash`.
 4. Na Unraidu vytvoř krátkodobý lokální approval token:
 
@@ -152,7 +156,7 @@ Apply tools vyžadují `confirm_plan_hash`. Pokud jsou zapnuté approval tokeny,
 unraid-ai-manager approve-plan \
   --plan /mnt/user/appdata/unraid-ai-manager/plans/PLAN.json \
   --approvals-dir /mnt/user/appdata/unraid-ai-manager/approvals \
-  --purpose amud \
+  --purpose dashboard \
   --ttl 15m
 ```
 
@@ -169,10 +173,11 @@ unraid-ai-manager inventory \
   --templates /boot/config/plugins/dockerMan/templates-user
 ```
 
-AMUD plán:
+Dashboard plán přes AMUD adapter:
 
 ```bash
-unraid-ai-manager plan-amud \
+unraid-ai-manager plan-dashboard \
+  --provider amud \
   --templates /boot/config/plugins/dockerMan/templates-user \
   --url-mode hybrid \
   --local-host 192.0.2.10 \
@@ -184,20 +189,20 @@ unraid-ai-manager plan-amud \
   --exclude mariadb \
   --exclude mosquitto \
   --diff \
-  --out /mnt/user/appdata/unraid-ai-manager/plans/amud-plan.json
+  --out /mnt/user/appdata/unraid-ai-manager/plans/dashboard-plan.json
 ```
 
-Aplikace schváleného AMUD plánu:
+Aplikace schváleného dashboard plánu:
 
 ```bash
-unraid-ai-manager apply-amud-plan \
-  --plan /mnt/user/appdata/unraid-ai-manager/plans/amud-plan.json \
+unraid-ai-manager apply-dashboard-plan \
+  --plan /mnt/user/appdata/unraid-ai-manager/plans/dashboard-plan.json \
   --confirm-plan-hash <plan_hash> \
-  --approval-token <approval_token> \
-  --approvals-dir /mnt/user/appdata/unraid-ai-manager/approvals \
   --backup-dir /mnt/user/appdata/unraid-ai-manager/backups \
   --audit-dir /mnt/user/appdata/unraid-ai-manager/audit
 ```
+
+`plan-amud` a `apply-amud-plan` zůstávají jako kompatibilní zkratky pro AMUD label adapter, ale nové workflow by mělo používat obecné dashboard příkazy.
 
 Aplikace schváleného recreate plánu:
 

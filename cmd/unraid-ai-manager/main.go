@@ -53,6 +53,11 @@ type amudPlanWithDiffs struct {
 	Diffs []diffRecord     `json:"diffs"`
 }
 
+type dashboardPlanWithDiffs struct {
+	Plan  planner.DashboardPlan `json:"plan"`
+	Diffs []diffRecord          `json:"diffs"`
+}
+
 type tzPlanWithDiffs struct {
 	Plan  planner.TZPlan `json:"plan"`
 	Diffs []diffRecord   `json:"diffs"`
@@ -90,12 +95,16 @@ func run(args []string) error {
 		return runCompareRuntime(args[1:])
 	case "plan-recreate":
 		return runPlanRecreate(args[1:])
+	case "plan-dashboard":
+		return runPlanDashboard(args[1:])
 	case "plan-amud":
 		return runPlanAMUD(args[1:])
 	case "plan-tz":
 		return runPlanTZ(args[1:])
 	case "approve-plan":
 		return runApprovePlan(args[1:])
+	case "apply-dashboard-plan":
+		return runApplyDashboardPlan(args[1:])
 	case "apply-amud-plan":
 		return runApplyAMUDPlan(args[1:])
 	case "apply-tz-plan":
@@ -289,6 +298,107 @@ func runPlanRecreate(args []string) error {
 	return nil
 }
 
+func runPlanDashboard(args []string) error {
+	flags := flag.NewFlagSet("plan-dashboard", flag.ContinueOnError)
+	templatesPath := flags.String("templates", "", "Path to templates-user directory or one XML file.")
+	provider := flags.String("provider", "amud", "Dashboard provider. Currently supported: amud.")
+	localHost := flags.String("local-host", "", "Local Unraid host/IP for local dashboard URLs.")
+	urlMode := flags.String("url-mode", "local", "URL mode: local, cloudflare, hybrid.")
+	cloudflareDomain := flags.String("cloudflare-domain", "", "Cloudflare base domain, e.g. example.com.")
+	includePortOnly := flags.Bool("include-port-only", false, "Also include templates without WebUI that only expose a TCP port.")
+	runtimeFilter := flags.String("runtime-filter", "templates", "Runtime filter: templates, existing, or running.")
+	inspectPath := flags.String("inspect", "", "Optional docker inspect JSON file/directory for runtime filtering.")
+	dockerSocket := flags.String("docker-socket", "", "Docker unix socket path for runtime filtering, e.g. /var/run/docker.sock.")
+	dockerHost := flags.String("docker-host", "", "Docker HTTP API endpoint for runtime filtering. Use only for trusted local/proxy endpoints.")
+	jsonOutput := flags.Bool("json", false, "Print machine-readable JSON.")
+	diffOutput := flags.Bool("diff", false, "Print candidate DockerMan XML unified diff. Read-only; does not write files.")
+	outPath := flags.String("out", "", "Write dashboard plan JSON to this path. Read-only for Unraid templates.")
+	var routes routeFlags
+	var names nameFlags
+	var excludes nameFlags
+	flags.Var(&routes, "route", "Cloudflare mapping NAME=SUBDOMAIN_OR_URL. Can be repeated.")
+	flags.Var(&names, "container", "Limit dashboard plan to a container name. Can be repeated.")
+	flags.Var(&excludes, "exclude", "Exclude a container name from the dashboard plan. Can be repeated.")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if *templatesPath == "" {
+		return errors.New("--templates is required")
+	}
+	if *localHost == "" {
+		return errors.New("--local-host is required")
+	}
+	if *urlMode != "local" && *urlMode != "cloudflare" && *urlMode != "hybrid" {
+		return errors.New("--url-mode must be local, cloudflare, or hybrid")
+	}
+
+	templates, err := dockerxml.LoadTemplates(*templatesPath)
+	if err != nil {
+		return err
+	}
+	normalizedRuntimeFilter, err := planner.NormalizeRuntimeFilter(*runtimeFilter)
+	if err != nil {
+		return err
+	}
+	if normalizedRuntimeFilter != "templates" {
+		runtime, err := loadRuntimeContainers(*inspectPath, *dockerSocket, *dockerHost)
+		if err != nil {
+			return err
+		}
+		templates, err = planner.FilterTemplatesByRuntime(templates, runtime, normalizedRuntimeFilter)
+		if err != nil {
+			return err
+		}
+	}
+	plan, err := planner.BuildDashboardPlan(templates, planner.DashboardOptions{
+		Provider:         *provider,
+		LocalHost:        *localHost,
+		URLMode:          *urlMode,
+		CloudflareDomain: *cloudflareDomain,
+		CloudflareRoutes: routes.Map,
+		Names:            names.Map,
+		ExcludedNames:    excludes.Map,
+		IncludePortOnly:  *includePortOnly,
+		RuntimeFilter:    normalizedRuntimeFilter,
+	})
+	if err != nil {
+		return err
+	}
+	if *diffOutput {
+		diffs, err := buildDashboardDiffs(plan)
+		if err != nil {
+			return err
+		}
+		if *outPath != "" {
+			if err := writeJSONFile(*outPath, dashboardPlanWithDiffs{Plan: plan, Diffs: diffs}); err != nil {
+				return err
+			}
+		}
+		if *jsonOutput {
+			return printJSON(dashboardPlanWithDiffs{Plan: plan, Diffs: diffs})
+		}
+		printDashboardPlan(plan, false)
+		printDashboardDiffs(diffs)
+		if *outPath != "" {
+			fmt.Printf("Dashboard plan JSON written to: %s\n", *outPath)
+		}
+		return nil
+	}
+	if *outPath != "" {
+		if err := writeJSONFile(*outPath, plan); err != nil {
+			return err
+		}
+	}
+	if *jsonOutput {
+		return printJSON(plan)
+	}
+	printDashboardPlan(plan, true)
+	if *outPath != "" {
+		fmt.Printf("Dashboard plan JSON written to: %s\n", *outPath)
+	}
+	return nil
+}
+
 func runPlanAMUD(args []string) error {
 	flags := flag.NewFlagSet("plan-amud", flag.ContinueOnError)
 	templatesPath := flags.String("templates", "", "Path to templates-user directory or one XML file.")
@@ -446,6 +556,39 @@ func runPlanTZ(args []string) error {
 	if *outPath != "" {
 		fmt.Printf("TZ plan JSON written to: %s\n", *outPath)
 	}
+	return nil
+}
+
+func runApplyDashboardPlan(args []string) error {
+	flags := flag.NewFlagSet("apply-dashboard-plan", flag.ContinueOnError)
+	planPath := flags.String("plan", "", "Path to exported dashboard plan JSON.")
+	confirmPlanHash := flags.String("confirm-plan-hash", "", "Exact plan hash required to apply.")
+	backupDir := flags.String("backup-dir", "", "Directory for XML backups. Must not be inside templates-user.")
+	auditDir := flags.String("audit-dir", "", "Directory for audit JSON logs. Must not be inside templates-user.")
+	jsonOutput := flags.Bool("json", false, "Print machine-readable JSON report.")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if *planPath == "" {
+		return errors.New("--plan is required")
+	}
+
+	plan, err := executor.ReadDashboardPlanFile(*planPath)
+	if err != nil {
+		return fmt.Errorf("read dashboard plan: %w", err)
+	}
+	report, err := executor.ApplyDashboardPlan(plan, executor.DashboardApplyOptions{
+		ConfirmPlanHash: *confirmPlanHash,
+		BackupDir:       *backupDir,
+		AuditDir:        *auditDir,
+	})
+	if err != nil {
+		return err
+	}
+	if *jsonOutput {
+		return printJSON(report)
+	}
+	printDashboardApplyReport(report)
 	return nil
 }
 
@@ -833,6 +976,67 @@ func printAMUDPlan(plan planner.AMUDPlan, printFooter bool) {
 	}
 }
 
+func printDashboardPlan(plan planner.DashboardPlan, printFooter bool) {
+	fmt.Println("Dashboard configuration plan (read-only)")
+	fmt.Printf("Plan hash: %s\n", plan.PlanHash)
+	fmt.Printf("Provider:  %s\n", plan.Provider)
+	fmt.Printf("Adapter:   %s\n", plan.Adapter)
+	fmt.Printf("URL mode:  %s\n", plan.URLMode)
+	fmt.Printf("Local:     %s\n", plan.LocalHost)
+	if plan.CloudflareDomain != "" {
+		fmt.Printf("Cloudflare domain: %s\n", plan.CloudflareDomain)
+	}
+	fmt.Println()
+
+	if len(plan.Entries) == 0 {
+		fmt.Println("No dashboard candidates found.")
+		return
+	}
+
+	for _, entry := range plan.Entries {
+		fmt.Printf("- %s\n", entry.Container)
+		fmt.Printf("  Service:   %s", entry.Service.DisplayName)
+		if entry.Service.IntegrationType != "" {
+			fmt.Printf(" (%s)", entry.Service.IntegrationType)
+		}
+		fmt.Println()
+		fmt.Printf("  Detection: %s (%s)\n", entry.WebDetection.Confidence, entry.WebDetection.Reason)
+		fmt.Printf("  URL:       %s\n", valueOrDash(entry.URL.URL))
+		fmt.Printf("  Target:    %s\n", entry.Target)
+		fmt.Println("  Changes:")
+		for _, change := range entry.TargetChanges {
+			prefix := "?"
+			switch change.Action {
+			case "add":
+				prefix = "+"
+			case "update":
+				prefix = "~"
+			case "unchanged":
+				prefix = "="
+			}
+			current := ""
+			if change.Current != nil {
+				current = " (current: " + *change.Current + ")"
+			}
+			proposed := change.Proposed
+			if change.Secret {
+				proposed = maskSecret(proposed)
+			}
+			fmt.Printf("    %s %s:%s=%s%s\n", prefix, change.TargetType, change.Key, proposed, current)
+		}
+		if len(entry.Warnings) > 0 {
+			fmt.Println("  Warnings:")
+			for _, warning := range entry.Warnings {
+				fmt.Printf("    - %s\n", warning)
+			}
+		}
+		fmt.Println()
+	}
+	if printFooter {
+		fmt.Println("No files were changed.")
+	}
+}
+
 func buildAMUDDiffs(plan planner.AMUDPlan) ([]diffRecord, error) {
 	records := make([]diffRecord, 0, len(plan.Entries))
 	for _, entry := range plan.Entries {
@@ -855,6 +1059,24 @@ func buildAMUDDiffs(plan planner.AMUDPlan) ([]diffRecord, error) {
 		})
 	}
 	return records, nil
+}
+
+func buildDashboardDiffs(plan planner.DashboardPlan) ([]diffRecord, error) {
+	provider, err := planner.NormalizeDashboardProvider(plan.Provider)
+	if err != nil {
+		return nil, err
+	}
+	switch provider {
+	case planner.DashboardProviderAMUD:
+		plan.Provider = provider
+		amudPlan, err := planner.AMUDPlanFromDashboardPlan(plan)
+		if err != nil {
+			return nil, err
+		}
+		return buildAMUDDiffs(amudPlan)
+	default:
+		return nil, fmt.Errorf("unsupported dashboard provider: %s", provider)
+	}
 }
 
 func buildTZDiffs(plan planner.TZPlan) ([]diffRecord, error) {
@@ -883,6 +1105,29 @@ func buildTZDiffs(plan planner.TZPlan) ([]diffRecord, error) {
 
 func printAMUDDiffs(diffs []diffRecord) {
 	fmt.Println("Candidate XML diff (read-only)")
+	fmt.Println()
+	if len(diffs) == 0 {
+		fmt.Println("No diffs.")
+		return
+	}
+	for _, diff := range diffs {
+		fmt.Printf("## %s\n", diff.Container)
+		if !diff.Changed {
+			fmt.Println("No XML changes needed.")
+			fmt.Println()
+			continue
+		}
+		fmt.Print(diff.UnifiedDiff)
+		if !strings.HasSuffix(diff.UnifiedDiff, "\n") {
+			fmt.Println()
+		}
+		fmt.Println()
+	}
+	fmt.Println("No files were changed.")
+}
+
+func printDashboardDiffs(diffs []diffRecord) {
+	fmt.Println("Candidate dashboard XML diff (read-only)")
 	fmt.Println()
 	if len(diffs) == 0 {
 		fmt.Println("No diffs.")
@@ -952,6 +1197,29 @@ func printTZDiffs(diffs []diffRecord) {
 
 func printApplyReport(report executor.AMUDApplyReport) {
 	fmt.Println("AMUD apply report")
+	fmt.Printf("Plan hash:  %s\n", report.PlanHash)
+	fmt.Printf("Backup dir: %s\n", report.BackupDir)
+	fmt.Printf("Audit dir:  %s\n", report.AuditDir)
+	fmt.Println()
+	for _, result := range report.Results {
+		status := "unchanged"
+		if result.Changed {
+			status = "changed"
+		}
+		fmt.Printf("- %s: %s\n", result.Container, status)
+		if result.BackupPath != "" {
+			fmt.Printf("  Backup: %s\n", result.BackupPath)
+		}
+		if result.ModifiedSHA256 != "" {
+			fmt.Printf("  SHA256: %s -> %s\n", result.OriginalSHA256, result.ModifiedSHA256)
+		}
+	}
+}
+
+func printDashboardApplyReport(report executor.DashboardApplyReport) {
+	fmt.Println("Dashboard apply report")
+	fmt.Printf("Provider:   %s\n", report.Provider)
+	fmt.Printf("Adapter:    %s\n", report.Adapter)
 	fmt.Printf("Plan hash:  %s\n", report.PlanHash)
 	fmt.Printf("Backup dir: %s\n", report.BackupDir)
 	fmt.Printf("Audit dir:  %s\n", report.AuditDir)
@@ -1041,9 +1309,11 @@ func printUsage() {
 	fmt.Println("  unraid-ai-manager inspect-docker --docker-socket /var/run/docker.sock [--json]")
 	fmt.Println("  unraid-ai-manager compare-runtime --templates PATH (--inspect inspect.json | --docker-socket /var/run/docker.sock | --docker-host URL) [--json]")
 	fmt.Println("  unraid-ai-manager plan-recreate --templates PATH (--inspect inspect.json | --docker-socket /var/run/docker.sock | --docker-host URL) [--container NAME] [--all] [--json] [--out plan.json]")
+	fmt.Println("  unraid-ai-manager plan-dashboard --provider amud --templates PATH --local-host IP [--url-mode local|cloudflare|hybrid] [--cloudflare-domain DOMAIN] [--route NAME=SUBDOMAIN] [--container NAME] [--exclude NAME] [--include-port-only] [--runtime-filter templates|existing|running] [--inspect inspect.json | --docker-socket /var/run/docker.sock | --docker-host URL] [--diff] [--out plan.json]")
 	fmt.Println("  unraid-ai-manager plan-amud --templates PATH --local-host IP [--url-mode local|cloudflare|hybrid] [--cloudflare-domain DOMAIN] [--route NAME=SUBDOMAIN] [--container NAME] [--exclude NAME] [--include-port-only] [--runtime-filter templates|existing|running] [--inspect inspect.json | --docker-socket /var/run/docker.sock | --docker-host URL] [--diff] [--out plan.json]")
 	fmt.Println("  unraid-ai-manager plan-tz --templates PATH [--tz Europe/Prague] [--container NAME] [--diff] [--out plan.json]")
-	fmt.Println("  unraid-ai-manager approve-plan --plan plan.json --approvals-dir PATH [--purpose amud] [--ttl 15m] [--json]")
+	fmt.Println("  unraid-ai-manager approve-plan --plan plan.json --approvals-dir PATH [--purpose dashboard|amud|tz|recreate] [--ttl 15m] [--json]")
+	fmt.Println("  unraid-ai-manager apply-dashboard-plan --plan plan.json --confirm-plan-hash HASH --backup-dir PATH --audit-dir PATH [--json]")
 	fmt.Println("  unraid-ai-manager apply-amud-plan --plan plan.json --confirm-plan-hash HASH --backup-dir PATH --audit-dir PATH [--json]")
 	fmt.Println("  unraid-ai-manager apply-tz-plan --plan plan.json --confirm-plan-hash HASH --backup-dir PATH --audit-dir PATH [--json]")
 	fmt.Println("  unraid-ai-manager apply-recreate-plan --plan plan.json --confirm-plan-hash HASH --audit-dir PATH (--docker-socket /var/run/docker.sock | --docker-host URL) [--json]")
@@ -1116,6 +1386,16 @@ func valueOrDash(value string) string {
 		return "-"
 	}
 	return value
+}
+
+func maskSecret(value string) string {
+	if value == "" {
+		return ""
+	}
+	if len(value) <= 8 {
+		return "********"
+	}
+	return value[:4] + "..." + value[len(value)-4:]
 }
 
 func portsSummary(ports []dockerxml.ConfigEntry) string {

@@ -6,10 +6,24 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-06-28
+
 ### Added
 
+- Added a generic dashboard planning model (`dashboard-config`) so AMUD is now the first dashboard provider adapter instead of the only dashboard concept in the architecture.
+- Added helper API endpoints `POST /v1/plan/dashboard` and `POST /v1/apply/dashboard`.
+- Added helper API endpoint `GET /v1/capabilities` so AI clients can discover implemented and planned safe action modules.
+- Added MCP tools `unraid_capabilities`, `unraid_plan_dashboard` and `unraid_apply_dashboard`.
+- Added CLI commands `plan-dashboard` and `apply-dashboard-plan`.
+- Added service metadata inference in dashboard plans, including display name, slug, icon, category and likely integration type.
+- Added tests for the generic dashboard planner and AMUD adapter helper flow.
 - Added GitHub Actions CI for Go tests, MCP syntax checks, Unraid plugin packaging and plugin validation.
 - Added GitHub Actions release automation for `vMAJOR.MINOR.PATCH` tags and manual release dispatches.
+
+### Changed
+
+- `unraid_plan_amud`, `unraid_apply_amud`, `plan-amud` and `apply-amud-plan` are now compatibility shortcuts. New workflows should use the generic dashboard APIs and tools with `provider=amud`.
+- Documentation now describes Unraid AI Manager as a general Unraid automation control plane with dashboard provider adapters.
 
 ## [0.1.4] - 2026-06-28
 
@@ -100,7 +114,8 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 - The helper binds to `127.0.0.1:37231` by default.
 - The helper supports API-key authentication.
 
-[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.1...v0.1.2

@@ -34,6 +34,7 @@ HTTP helper on Unraid
         |
         +--> DockerMan XML templates-user
         +--> read-only Docker API
+        +--> dashboard provider adapters
         +--> backups
         +--> audit logs
         +--> approval token store
@@ -54,7 +55,7 @@ The Unraid-side helper daemon is the enforcement point. It must enforce:
 - rejection of dangerous mounts and privileged operations;
 - separation between read-only inspect actions and write/lifecycle actions.
 
-## Current status in `v0.1.4`
+## Current status in `v0.1.5`
 
 Implemented:
 
@@ -63,7 +64,8 @@ Implemented:
 - Node MCP server `mcp/unraid-mcp-server.mjs`;
 - Unraid plugin wrapper with Settings page;
 - DockerMan XML parser;
-- AMUD planner and apply workflow;
+- generic dashboard plan/apply workflow with AMUD as the first provider adapter;
+- AMUD compatibility planner and apply workflow;
 - TZ planner and apply workflow;
 - XML backup, audit and restore;
 - read-only Docker API inspect;
@@ -79,6 +81,41 @@ Not implemented yet:
 - new container creation;
 - Unraid shares/VM/plugin/array management;
 - safe Docker lifecycle proxy.
+
+## Capability model
+
+The helper is a safe Unraid control plane, not a dashboard-specific daemon. AI clients should start by reading `/v1/capabilities`, then inventory/runtime state, then create a plan for one named capability.
+
+Implemented capabilities are narrow and named:
+
+- `inventory`
+- `docker-runtime-inspect`
+- `dashboard-config`
+- `template-env`
+- `docker-recreate`
+- `xml-restore`
+
+Planned capabilities are advertised separately, for example `community-applications` and broader `general-unraid-control`. Planned capabilities are visible to clients for orientation, but they have `access=none-yet` and cannot be applied until an explicit safe implementation exists.
+
+## Dashboard adapter model
+
+Dashboard support is intentionally not hard-coded to AMUD. The helper builds a generic `dashboard-config` plan:
+
+1. Discover Unraid services from DockerMan XML and Docker runtime state.
+2. Resolve service metadata such as display name, URL, icon, category and likely integration type.
+3. Pass that normalized service model into a provider adapter.
+4. Produce provider-specific target changes.
+5. Apply only the approved target changes through the same backup, hash and audit workflow.
+
+The first provider is:
+
+```text
+provider = amud
+adapter  = dockerman-labels
+target   = dockerman_xml
+```
+
+Future providers can use the same core discovery and approval workflow while writing different targets, for example Homepage Docker labels/YAML, Homarr API data, Dashy YAML or another dashboard's database/API.
 
 ## DockerMan XML rules
 

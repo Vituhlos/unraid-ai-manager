@@ -10,5 +10,7 @@ build/
 *.egg-info/
 .tools/
 .local/
+.tmp/
+.tmp-go-build*/
 .plugin_build/
 dist/

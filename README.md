@@ -4,7 +4,7 @@ Safe Unraid automation for AI assistants.
 
 Unraid AI Manager is a local control plane for managing Unraid DockerMan templates through a strict plan → diff → approval → apply workflow. It is designed for AI/MCP clients, but the security boundary is the Unraid-side helper daemon, not the chat model.
 
-> Current status: `v0.1.4` is an early preview. It can inventory DockerMan XML templates, inspect Docker runtime state, plan AMUD/TZ/template changes, apply approved XML edits with backups and audit logs, apply approved DockerMan recreate plans, and expose those actions through an MCP server. Community Applications installation and arbitrary container lifecycle management are planned, not implemented yet.
+> Current status: `v0.1.5` is an early preview. It can inventory DockerMan XML templates, inspect Docker runtime state, plan generic dashboard/TZ/template changes, apply approved XML edits with backups and audit logs, apply approved DockerMan recreate plans, and expose those actions through an MCP server. AMUD is the first dashboard adapter. Community Applications installation and arbitrary container lifecycle management are planned, not implemented yet.
 
 ## Languages
 
@@ -19,19 +19,20 @@ Unraid AI Manager is a local control plane for managing Unraid DockerMan templat
 ## What it does
 
 - Reads Unraid DockerMan XML templates from `/boot/config/plugins/dockerMan/templates-user`.
+- Exposes a capability map so AI clients can discover safe implemented/planned action modules before doing work.
 - Parses ports, paths, variables, labels, WebUI, template metadata and repository information.
 - Reads Docker runtime state through read-only Docker API calls.
 - Compares DockerMan XML templates with live container configuration.
-- Plans AMUD labels:
+- Plans dashboard configuration through provider adapters. The first adapter is AMUD through DockerMan labels:
   - `amud.enable=true`
   - `amud.url=...`
   - `amud.name=...`
   - `amud.icon=...`
-- Supports AMUD URL modes:
+- Supports dashboard URL modes:
   - `local`: `http://<local_host>:<host_port>`
   - `cloudflare`: `https://<subdomain>.<domain>`
   - `hybrid`: Cloudflare when a route is known, otherwise local
-- Plans AMUD labels for DockerMan templates with an explicit `WebUI` by default.
+- Plans dashboard entries for DockerMan templates with an explicit `WebUI` by default.
 - Can explicitly include TCP port-only templates or limit/exclude specific containers when needed.
 - Helper/MCP planning filters to currently running Docker containers by default when Docker runtime access is available.
 - Plans and applies `TZ` environment variable changes.
@@ -128,9 +129,12 @@ Example MCP client configuration:
 Available MCP tools:
 
 - `unraid_health`
+- `unraid_capabilities`
 - `unraid_inventory`
 - `unraid_docker_inspect`
 - `unraid_compare_runtime`
+- `unraid_plan_dashboard`
+- `unraid_apply_dashboard`
 - `unraid_plan_amud`
 - `unraid_apply_amud`
 - `unraid_plan_tz`
@@ -141,10 +145,10 @@ Available MCP tools:
 
 Apply tools require `confirm_plan_hash`. When approval tokens are enabled, they also require `approval_token`.
 
-## Safe AMUD workflow
+## Safe dashboard workflow
 
 1. Ask the AI to create a plan, not to apply it.
-2. Review the proposed labels, URLs, risks and XML diff.
+2. Review the proposed provider, adapter, URLs, target changes, risks and XML diff.
 3. Confirm the exact `plan_hash`.
 4. Create a short-lived local approval token on Unraid:
 
@@ -152,7 +156,7 @@ Apply tools require `confirm_plan_hash`. When approval tokens are enabled, they 
 unraid-ai-manager approve-plan \
   --plan /mnt/user/appdata/unraid-ai-manager/plans/PLAN.json \
   --approvals-dir /mnt/user/appdata/unraid-ai-manager/approvals \
-  --purpose amud \
+  --purpose dashboard \
   --ttl 15m
 ```
 
@@ -169,10 +173,11 @@ unraid-ai-manager inventory \
   --templates /boot/config/plugins/dockerMan/templates-user
 ```
 
-Plan AMUD labels:
+Plan dashboard configuration through the AMUD adapter:
 
 ```bash
-unraid-ai-manager plan-amud \
+unraid-ai-manager plan-dashboard \
+  --provider amud \
   --templates /boot/config/plugins/dockerMan/templates-user \
   --url-mode hybrid \
   --local-host 192.0.2.10 \
@@ -184,20 +189,20 @@ unraid-ai-manager plan-amud \
   --exclude mariadb \
   --exclude mosquitto \
   --diff \
-  --out /mnt/user/appdata/unraid-ai-manager/plans/amud-plan.json
+  --out /mnt/user/appdata/unraid-ai-manager/plans/dashboard-plan.json
 ```
 
-Apply an approved AMUD plan:
+Apply an approved dashboard plan:
 
 ```bash
-unraid-ai-manager apply-amud-plan \
-  --plan /mnt/user/appdata/unraid-ai-manager/plans/amud-plan.json \
+unraid-ai-manager apply-dashboard-plan \
+  --plan /mnt/user/appdata/unraid-ai-manager/plans/dashboard-plan.json \
   --confirm-plan-hash <plan_hash> \
-  --approval-token <approval_token> \
-  --approvals-dir /mnt/user/appdata/unraid-ai-manager/approvals \
   --backup-dir /mnt/user/appdata/unraid-ai-manager/backups \
   --audit-dir /mnt/user/appdata/unraid-ai-manager/audit
 ```
+
+`plan-amud` and `apply-amud-plan` remain as compatibility shortcuts for the AMUD label adapter, but new workflows should prefer the generic dashboard commands.
 
 Apply an approved recreate plan:
 
