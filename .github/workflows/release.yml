@@ -118,7 +118,7 @@ jobs:
           }
 
           $releaseExists = $false
-          gh release view $env:RELEASE_TAG --json tagName 1>$null 2>$null
+          cmd /c "gh release view %RELEASE_TAG% >NUL 2>NUL"
           if ($LASTEXITCODE -eq 0) {
             $releaseExists = $true
           }
