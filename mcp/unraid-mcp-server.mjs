@@ -183,6 +183,40 @@ const tools = [
     },
   },
   {
+    name: "unraid_plan_dashboard_integrations",
+    description: "Create a read-only dashboard integration readiness plan using service discovery and secret_ref references. Does not expose full secrets and does not apply changes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        provider: {
+          type: "string",
+          enum: ["amud"],
+          description: "Dashboard provider adapter. Defaults to amud.",
+        },
+        local_host: { type: "string" },
+        url_mode: { type: "string", enum: ["local", "cloudflare", "hybrid"] },
+        cloudflare_domain: { type: "string" },
+        cloudflare_routes: {
+          type: "object",
+          additionalProperties: { type: "string" },
+        },
+        containers: { type: "array", items: { type: "string" } },
+        exclude_containers: { type: "array", items: { type: "string" } },
+        include_port_only: { type: "boolean" },
+        runtime_filter: {
+          type: "string",
+          enum: ["templates", "existing", "running"],
+        },
+        inspect_path: {
+          type: "string",
+          description: "Optional path on the helper host to a docker inspect JSON snapshot for runtime filtering.",
+        },
+        save_plan: { type: "boolean" },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: "unraid_plan_amud",
     description: "Compatibility shortcut for AMUD Docker label planning. Prefer unraid_plan_dashboard for new workflows.",
     inputSchema: {
@@ -320,6 +354,7 @@ const toolHandlers = {
   unraid_apply_dashboard: (args) => helperPost("/v1/apply/dashboard", args || {}),
   unraid_plan_dashboard_sync: (args) => helperPost("/v1/plan/dashboard-sync", args || {}),
   unraid_apply_dashboard_sync: (args) => helperPost("/v1/apply/dashboard-sync", args || {}),
+  unraid_plan_dashboard_integrations: (args) => helperPost("/v1/plan/dashboard-integrations", args || {}),
   unraid_plan_amud: (args) => helperPost("/v1/plan/amud", args || {}),
   unraid_apply_amud: (args) => helperPost("/v1/apply/amud", args || {}),
   unraid_plan_tz: (args) => helperPost("/v1/plan/tz", args || {}),

@@ -163,6 +163,7 @@ func TestServerCapabilities(t *testing.T) {
 	foundDashboard := false
 	foundDashboardSync := false
 	foundDiscovery := false
+	foundIntegrations := false
 	foundCommunityApps := false
 	for _, capability := range capabilities.Capabilities {
 		if capability.ID == "dashboard-config" {
@@ -177,11 +178,14 @@ func TestServerCapabilities(t *testing.T) {
 		if capability.ID == "integration-discovery" {
 			foundDiscovery = true
 		}
+		if capability.ID == "dashboard-integrations" {
+			foundIntegrations = true
+		}
 		if capability.ID == "community-applications" && capability.Status == "planned" {
 			foundCommunityApps = true
 		}
 	}
-	if !foundDashboard || !foundDashboardSync || !foundDiscovery || !foundCommunityApps {
+	if !foundDashboard || !foundDashboardSync || !foundDiscovery || !foundIntegrations || !foundCommunityApps {
 		t.Fatalf("missing expected capabilities: %#v", capabilities.Capabilities)
 	}
 }
@@ -370,6 +374,88 @@ func TestServerPlanDashboardSync(t *testing.T) {
 	}
 	if len(planResponse.Diffs) != 1 || !planResponse.Diffs[0].Changed {
 		t.Fatalf("expected one changed diff, got %#v", planResponse.Diffs)
+	}
+}
+
+func TestServerPlanDashboardIntegrations(t *testing.T) {
+	dir := t.TempDir()
+	templatesDir := filepath.Join(dir, "templates")
+	configDir := filepath.Join(dir, "radarr-config")
+	plansDir := filepath.Join(dir, "plans")
+	if err := os.MkdirAll(templatesDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "config.xml"), []byte(`<Config><ApiKey>radarr-secret-value</ApiKey></Config>`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	templateXML := `<?xml version="1.0"?>
+<Container version="2">
+  <Name>radarr</Name>
+  <Repository>lscr.io/linuxserver/radarr:latest</Repository>
+  <Network>bridge</Network>
+  <Privileged>false</Privileged>
+  <WebUI>http://[IP]:[PORT:7878]/</WebUI>
+  <Config Name="WebUI" Target="7878" Default="7878" Mode="tcp" Type="Port">7878</Config>
+  <Config Name="Config" Target="/config" Default="" Mode="rw" Type="Path">` + configDir + `</Config>
+</Container>
+`
+	if err := os.WriteFile(filepath.Join(templatesDir, "my-radarr.xml"), []byte(templateXML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	helper, err := New(Config{
+		TemplatesDir: templatesDir,
+		BackupDir:    filepath.Join(dir, "backups"),
+		AuditDir:     filepath.Join(dir, "audit"),
+		PlansDir:     plansDir,
+		LocalHost:    "192.0.2.10",
+		APIKey:       "secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(helper.Handler())
+	defer httpServer.Close()
+
+	planBody := `{"provider":"amud","runtime_filter":"templates","save_plan":true}`
+	request, err := http.NewRequest(http.MethodPost, httpServer.URL+"/v1/plan/dashboard-integrations", strings.NewReader(planBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("X-Unraid-AI-Key", "secret")
+	request.Header.Set("Content-Type", "application/json")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", response.StatusCode)
+	}
+	var planResponse DashboardIntegrationPlanResponse
+	if err := json.NewDecoder(response.Body).Decode(&planResponse); err != nil {
+		t.Fatal(err)
+	}
+	if planResponse.Plan.Kind != "dashboard-integrations" || planResponse.Plan.PlanHash == "" {
+		t.Fatalf("unexpected integration plan: %#v", planResponse.Plan)
+	}
+	if len(planResponse.Plan.Entries) != 1 {
+		t.Fatalf("expected one integration entry, got %#v", planResponse.Plan.Entries)
+	}
+	entry := planResponse.Plan.Entries[0]
+	if entry.Status != "ready" {
+		t.Fatalf("expected ready entry, got %#v", entry)
+	}
+	if len(entry.RequiredSecrets) != 1 || entry.RequiredSecrets[0].Ref == "" {
+		t.Fatalf("expected required secret ref, got %#v", entry.RequiredSecrets)
+	}
+	if entry.RequiredSecrets[0].Preview == "radarr-secret-value" {
+		t.Fatal("integration plan leaked full secret")
+	}
+	if planResponse.PlanPath == "" {
+		t.Fatal("missing saved integration plan path")
 	}
 }
 

@@ -167,6 +167,25 @@ type DashboardSyncPlanResponse struct {
 	PlanPath string                     `json:"plan_path,omitempty"`
 }
 
+type DashboardIntegrationPlanRequest struct {
+	Provider          string            `json:"provider"`
+	LocalHost         string            `json:"local_host"`
+	URLMode           string            `json:"url_mode"`
+	CloudflareDomain  string            `json:"cloudflare_domain"`
+	CloudflareRoutes  map[string]string `json:"cloudflare_routes"`
+	Containers        []string          `json:"containers"`
+	ExcludeContainers []string          `json:"exclude_containers"`
+	IncludePortOnly   bool              `json:"include_port_only"`
+	RuntimeFilter     string            `json:"runtime_filter"`
+	InspectPath       string            `json:"inspect_path"`
+	SavePlan          bool              `json:"save_plan"`
+}
+
+type DashboardIntegrationPlanResponse struct {
+	Plan     workflow.DashboardIntegrationPlan `json:"plan"`
+	PlanPath string                            `json:"plan_path,omitempty"`
+}
+
 type TZPlanRequest struct {
 	Timezone         string   `json:"timezone"`
 	Containers       []string `json:"containers"`
@@ -311,6 +330,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /v1/discover/integrations", s.handleDiscoverIntegrations)
 	s.mux.HandleFunc("POST /v1/plan/dashboard", s.handlePlanDashboard)
 	s.mux.HandleFunc("POST /v1/plan/dashboard-sync", s.handlePlanDashboardSync)
+	s.mux.HandleFunc("POST /v1/plan/dashboard-integrations", s.handlePlanDashboardIntegrations)
 	s.mux.HandleFunc("POST /v1/plan/amud", s.handlePlanAMUD)
 	s.mux.HandleFunc("POST /v1/plan/tz", s.handlePlanTZ)
 	s.mux.HandleFunc("POST /v1/plan/recreate", s.handlePlanRecreate)
@@ -356,6 +376,14 @@ func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 				Access:      "read",
 				Description: "Discover known application integrations and appdata-backed API key/token locations without returning full secret values.",
 				Actions:     []string{"read", "detect-secrets"},
+			},
+			{
+				ID:          "dashboard-integrations",
+				Status:      "implemented-read-only",
+				Access:      "read-plan",
+				Description: "Plan dashboard integration readiness using service discovery and secret_ref values without exposing full secrets.",
+				Providers:   []string{planner.DashboardProviderAMUD},
+				Actions:     []string{"plan"},
 			},
 			{
 				ID:          "dashboard-config",
@@ -675,6 +703,73 @@ func (s *Server) handlePlanDashboardSync(w http.ResponseWriter, r *http.Request)
 	}
 	if request.SavePlan {
 		path, err := s.savePlan("dashboard-sync", plan)
+		if err != nil {
+			s.writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		response.PlanPath = path
+	}
+	s.writeJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) handlePlanDashboardIntegrations(w http.ResponseWriter, r *http.Request) {
+	var request DashboardIntegrationPlanRequest
+	if err := s.readJSON(r, &request); err != nil {
+		s.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	templates, err := s.loadTemplates()
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	runtimeFilter := request.RuntimeFilter
+	if runtimeFilter == "" && s.hasRuntimeSource(request.InspectPath) {
+		runtimeFilter = "running"
+	}
+	runtimeFilter, err = planner.NormalizeRuntimeFilter(runtimeFilter)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if runtimeFilter != "templates" {
+		runtime, err := s.loadRuntime(r.Context(), request.InspectPath)
+		if err != nil {
+			s.writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		templates, err = planner.FilterTemplatesByRuntime(templates, runtime, runtimeFilter)
+		if err != nil {
+			s.writeError(w, http.StatusBadRequest, err)
+			return
+		}
+	}
+	localHost := request.LocalHost
+	if localHost == "" {
+		localHost = s.config.LocalHost
+	}
+	dashboardPlan, err := planner.BuildDashboardPlan(templates, planner.DashboardOptions{
+		Provider:         request.Provider,
+		LocalHost:        localHost,
+		URLMode:          request.URLMode,
+		CloudflareDomain: request.CloudflareDomain,
+		CloudflareRoutes: request.CloudflareRoutes,
+		Names:            nameSet(request.Containers),
+		ExcludedNames:    nameSet(request.ExcludeContainers),
+		IncludePortOnly:  request.IncludePortOnly,
+		RuntimeFilter:    runtimeFilter,
+	})
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	discoveryReport := discovery.DiscoverIntegrations(templates, discovery.Options{
+		Names: nameSet(request.Containers),
+	})
+	plan := workflow.BuildDashboardIntegrationPlan(dashboardPlan, discoveryReport)
+	response := DashboardIntegrationPlanResponse{Plan: plan}
+	if request.SavePlan {
+		path, err := s.savePlan("dashboard-integrations", plan)
 		if err != nil {
 			s.writeError(w, http.StatusInternalServerError, err)
 			return

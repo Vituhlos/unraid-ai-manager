@@ -141,6 +141,7 @@ Dostupné MCP tools:
 - `unraid_apply_dashboard`
 - `unraid_plan_dashboard_sync`
 - `unraid_apply_dashboard_sync`
+- `unraid_plan_dashboard_integrations`
 - `unraid_plan_amud`
 - `unraid_apply_amud`
 - `unraid_plan_tz`

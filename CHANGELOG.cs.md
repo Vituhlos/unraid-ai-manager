@@ -18,6 +18,7 @@ Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0
 - Přidán helper endpoint `POST /v1/discover/integrations`, MCP tool `unraid_discover_integrations` a CLI příkaz `discover-integrations`.
 - Rozšířeno odvozování dashboard service signatures pro AMUD-era integrace jako Jellyfin/Plex média, Servarr aplikace, DevOps/storage nástroje, monitoring a long-tail self-hosted aplikace.
 - Přidány stabilní `secret_ref` identifikátory pro nalezené secrety a interní allowlist resolver, aby budoucí apply workflow mohlo používat lokální secrety bez vyzrazení plných hodnot AI klientům.
+- Přidán read-only dashboard integration readiness plán (`dashboard-integrations`), který kombinuje dashboard kandidáty s nalezenými `secret_ref` hodnotami a hlásí stav `ready`, `missing-secret` nebo `unsupported`.
 
 ## [0.1.7] - 2026-06-28
 
