@@ -1,0 +1,75 @@
+<?xml version="1.0" standalone="yes"?>
+<!DOCTYPE PLUGIN [
+  <!ENTITY name "unraid-ai-manager">
+  <!ENTITY author "Vituhlos">
+  <!ENTITY version "@VERSION@">
+  <!ENTITY packageURL "@PACKAGE_URL@">
+  <!ENTITY pluginURL "@PLUGIN_URL@">
+  <!ENTITY md5 "@MD5@">
+]>
+<PLUGIN name="&name;"
+        author="&author;"
+        version="&version;"
+        launch="Settings/UnraidAIManager"
+        pluginURL="&pluginURL;"
+        min="7.0.0"
+        support="https://github.com/Vituhlos/unraid-ai-manager">
+
+  <CHANGES>
+  ### &version;
+  - Install Unraid AI Manager helper daemon.
+  - Add Settings page.
+  - Add rc script for start/stop/restart/status.
+  </CHANGES>
+
+  <FILE Name="/tmp/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
+    <URL>&packageURL;/&name;-&version;-x86_64-1.txz</URL>
+    <MD5>&md5;</MD5>
+  </FILE>
+
+  <FILE Run="/bin/bash">
+    <INLINE>
+mkdir -p /boot/config/plugins/&name;
+if [ ! -f /boot/config/plugins/&name;/unraid-ai-manager.cfg ]; then
+  cat &gt; /boot/config/plugins/&name;/unraid-ai-manager.cfg &lt;&lt;'CFG'
+LISTEN="127.0.0.1:37231"
+TEMPLATES_DIR="/boot/config/plugins/dockerMan/templates-user"
+BACKUP_DIR="/mnt/user/appdata/unraid-ai-manager/backups"
+AUDIT_DIR="/mnt/user/appdata/unraid-ai-manager/audit"
+PLANS_DIR="/mnt/user/appdata/unraid-ai-manager/plans"
+APPROVALS_DIR="/mnt/user/appdata/unraid-ai-manager/approvals"
+DOCKER_SOCKET="/var/run/docker.sock"
+DOCKER_HOST=""
+LOCAL_HOST=""
+API_KEY=""
+REQUIRE_APPROVAL_TOKEN="true"
+CFG
+fi
+chmod +x /usr/local/bin/unraid-ai-helper /usr/local/bin/unraid-ai-manager /etc/rc.d/rc.unraid-ai-manager
+/etc/rc.d/rc.unraid-ai-manager start
+echo ""
+echo "-----------------------------------------------------------"
+echo " Unraid AI Manager &version; installed."
+echo " Open Settings -&gt; Unraid AI Manager"
+echo "-----------------------------------------------------------"
+echo ""
+    </INLINE>
+  </FILE>
+
+  <FILE Run="/bin/bash" Method="remove">
+    <INLINE>
+/etc/rc.d/rc.unraid-ai-manager stop 2&gt;/dev/null || true
+removepkg &name;-&version;-x86_64-1 2&gt;/dev/null || true
+rm -f /usr/local/bin/unraid-ai-helper /usr/local/bin/unraid-ai-manager
+rm -f /etc/rc.d/rc.unraid-ai-manager
+rm -rf /usr/local/emhttp/plugins/&name;
+echo ""
+echo "-----------------------------------------------------------"
+echo " Unraid AI Manager &version; removed."
+echo " Persistent config remains in /boot/config/plugins/&name;"
+echo " Appdata remains in /mnt/user/appdata/unraid-ai-manager"
+echo "-----------------------------------------------------------"
+echo ""
+    </INLINE>
+  </FILE>
+</PLUGIN>

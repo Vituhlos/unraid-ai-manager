@@ -1,0 +1,7 @@
+Menu="Settings"
+Icon="robot"
+Version="0.1.0"
+Title="Unraid AI Manager"
+Author="Vituhlos"
+Type="php"
+

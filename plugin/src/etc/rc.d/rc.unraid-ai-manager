@@ -1,0 +1,153 @@
+#!/bin/bash
+
+NAME="unraid-ai-manager"
+CONFIG="/boot/config/plugins/${NAME}/unraid-ai-manager.cfg"
+PIDFILE="/var/run/${NAME}.pid"
+LOGFILE="/var/log/${NAME}.log"
+HELPER="/usr/local/bin/unraid-ai-helper"
+
+default_config() {
+  mkdir -p "/boot/config/plugins/${NAME}"
+  if [ ! -f "$CONFIG" ]; then
+    cat > "$CONFIG" <<'CFG'
+LISTEN="127.0.0.1:37231"
+TEMPLATES_DIR="/boot/config/plugins/dockerMan/templates-user"
+BACKUP_DIR="/mnt/user/appdata/unraid-ai-manager/backups"
+AUDIT_DIR="/mnt/user/appdata/unraid-ai-manager/audit"
+PLANS_DIR="/mnt/user/appdata/unraid-ai-manager/plans"
+APPROVALS_DIR="/mnt/user/appdata/unraid-ai-manager/approvals"
+DOCKER_SOCKET="/var/run/docker.sock"
+DOCKER_HOST=""
+LOCAL_HOST=""
+API_KEY=""
+REQUIRE_APPROVAL_TOKEN="true"
+CFG
+  fi
+}
+
+load_config() {
+  default_config
+  # shellcheck source=/dev/null
+  . "$CONFIG"
+  LISTEN="${LISTEN:-127.0.0.1:37231}"
+  TEMPLATES_DIR="${TEMPLATES_DIR:-/boot/config/plugins/dockerMan/templates-user}"
+  BACKUP_DIR="${BACKUP_DIR:-/mnt/user/appdata/unraid-ai-manager/backups}"
+  AUDIT_DIR="${AUDIT_DIR:-/mnt/user/appdata/unraid-ai-manager/audit}"
+  PLANS_DIR="${PLANS_DIR:-/mnt/user/appdata/unraid-ai-manager/plans}"
+  APPROVALS_DIR="${APPROVALS_DIR:-/mnt/user/appdata/unraid-ai-manager/approvals}"
+  DOCKER_SOCKET="${DOCKER_SOCKET:-/var/run/docker.sock}"
+  DOCKER_HOST="${DOCKER_HOST:-}"
+  LOCAL_HOST="${LOCAL_HOST:-}"
+  API_KEY="${API_KEY:-}"
+  REQUIRE_APPROVAL_TOKEN="${REQUIRE_APPROVAL_TOKEN:-true}"
+}
+
+ensure_api_key() {
+  if [ -n "$API_KEY" ]; then
+    return
+  fi
+  if command -v openssl >/dev/null 2>&1; then
+    API_KEY="$(openssl rand -hex 32)"
+  else
+    API_KEY="$(tr -dc 'a-f0-9' < /dev/urandom | head -c 64)"
+  fi
+  if grep -q '^API_KEY=' "$CONFIG"; then
+    sed -i "s#^API_KEY=.*#API_KEY=\"${API_KEY}\"#" "$CONFIG"
+  else
+    echo "API_KEY=\"${API_KEY}\"" >> "$CONFIG"
+  fi
+  chmod 600 "$CONFIG"
+}
+
+is_running() {
+  [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
+}
+
+start_service() {
+  load_config
+  ensure_api_key
+  mkdir -p "$BACKUP_DIR" "$AUDIT_DIR" "$PLANS_DIR" "$APPROVALS_DIR"
+
+  if [ ! -x "$HELPER" ]; then
+    echo "$HELPER is not installed or executable"
+    exit 1
+  fi
+
+  if is_running; then
+    echo "$NAME is already running with PID $(cat "$PIDFILE")"
+    exit 0
+  fi
+
+  args=(
+    "--listen" "$LISTEN"
+    "--templates" "$TEMPLATES_DIR"
+    "--backup-dir" "$BACKUP_DIR"
+    "--audit-dir" "$AUDIT_DIR"
+    "--plans-dir" "$PLANS_DIR"
+    "--approvals-dir" "$APPROVALS_DIR"
+    "--api-key" "$API_KEY"
+    "--require-approval-token=${REQUIRE_APPROVAL_TOKEN}"
+  )
+
+  if [ -n "$DOCKER_SOCKET" ]; then
+    args+=("--docker-socket" "$DOCKER_SOCKET")
+  fi
+  if [ -n "$DOCKER_HOST" ]; then
+    args+=("--docker-host" "$DOCKER_HOST")
+  fi
+  if [ -n "$LOCAL_HOST" ]; then
+    args+=("--local-host" "$LOCAL_HOST")
+  fi
+
+  nohup "$HELPER" "${args[@]}" >> "$LOGFILE" 2>&1 &
+  echo $! > "$PIDFILE"
+  echo "$NAME started with PID $(cat "$PIDFILE")"
+}
+
+stop_service() {
+  if is_running; then
+    kill "$(cat "$PIDFILE")"
+    for _ in $(seq 1 20); do
+      if ! is_running; then
+        break
+      fi
+      sleep 0.25
+    done
+    if is_running; then
+      kill -9 "$(cat "$PIDFILE")" 2>/dev/null || true
+    fi
+  fi
+  rm -f "$PIDFILE"
+  echo "$NAME stopped"
+}
+
+status_service() {
+  load_config
+  if is_running; then
+    echo "$NAME running with PID $(cat "$PIDFILE")"
+    echo "Listen: $LISTEN"
+  else
+    echo "$NAME stopped"
+  fi
+}
+
+case "$1" in
+  start)
+    start_service
+    ;;
+  stop)
+    stop_service
+    ;;
+  restart)
+    stop_service
+    start_service
+    ;;
+  status)
+    status_service
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart|status}"
+    exit 1
+    ;;
+esac
+
