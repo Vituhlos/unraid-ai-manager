@@ -12,6 +12,7 @@ import (
 
 	"unraid-ai-manager/internal/approval"
 	"unraid-ai-manager/internal/compare"
+	"unraid-ai-manager/internal/discovery"
 	"unraid-ai-manager/internal/dockerapi"
 	"unraid-ai-manager/internal/dockerinspect"
 	"unraid-ai-manager/internal/dockerxml"
@@ -20,6 +21,7 @@ import (
 	"unraid-ai-manager/internal/planner"
 	"unraid-ai-manager/internal/risk"
 	"unraid-ai-manager/internal/textdiff"
+	"unraid-ai-manager/internal/workflow"
 	"unraid-ai-manager/internal/xmlpatch"
 )
 
@@ -58,6 +60,11 @@ type dashboardPlanWithDiffs struct {
 	Diffs []diffRecord          `json:"diffs"`
 }
 
+type dashboardSyncPlanWithDiffs struct {
+	Plan  workflow.DashboardSyncPlan `json:"plan"`
+	Diffs []diffRecord               `json:"diffs"`
+}
+
 type tzPlanWithDiffs struct {
 	Plan  planner.TZPlan `json:"plan"`
 	Diffs []diffRecord   `json:"diffs"`
@@ -87,6 +94,8 @@ func run(args []string) error {
 	switch args[0] {
 	case "inventory":
 		return runInventory(args[1:])
+	case "discover-integrations":
+		return runDiscoverIntegrations(args[1:])
 	case "inspect-json":
 		return runInspectJSON(args[1:])
 	case "inspect-docker":
@@ -97,6 +106,8 @@ func run(args []string) error {
 		return runPlanRecreate(args[1:])
 	case "plan-dashboard":
 		return runPlanDashboard(args[1:])
+	case "plan-dashboard-sync":
+		return runPlanDashboardSync(args[1:])
 	case "plan-amud":
 		return runPlanAMUD(args[1:])
 	case "plan-tz":
@@ -105,6 +116,8 @@ func run(args []string) error {
 		return runApprovePlan(args[1:])
 	case "apply-dashboard-plan":
 		return runApplyDashboardPlan(args[1:])
+	case "apply-dashboard-sync-plan":
+		return runApplyDashboardSyncPlan(args[1:])
 	case "apply-amud-plan":
 		return runApplyAMUDPlan(args[1:])
 	case "apply-tz-plan":
@@ -120,6 +133,33 @@ func run(args []string) error {
 		printUsage()
 		return fmt.Errorf("unknown command: %s", args[0])
 	}
+}
+
+func runDiscoverIntegrations(args []string) error {
+	flags := flag.NewFlagSet("discover-integrations", flag.ContinueOnError)
+	templatesPath := flags.String("templates", "", "Path to templates-user directory or one XML file.")
+	jsonOutput := flags.Bool("json", false, "Print machine-readable JSON.")
+	var names nameFlags
+	flags.Var(&names, "container", "Limit discovery to a container name. Can be repeated.")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if *templatesPath == "" {
+		return errors.New("--templates is required")
+	}
+
+	templates, err := dockerxml.LoadTemplates(*templatesPath)
+	if err != nil {
+		return err
+	}
+	report := discovery.DiscoverIntegrations(templates, discovery.Options{
+		Names: names.Map,
+	})
+	if *jsonOutput {
+		return printJSON(report)
+	}
+	printIntegrationDiscovery(report)
+	return nil
 }
 
 func runInventory(args []string) error {
@@ -399,6 +439,122 @@ func runPlanDashboard(args []string) error {
 	return nil
 }
 
+func runPlanDashboardSync(args []string) error {
+	flags := flag.NewFlagSet("plan-dashboard-sync", flag.ContinueOnError)
+	templatesPath := flags.String("templates", "", "Path to templates-user directory or one XML file.")
+	provider := flags.String("provider", "amud", "Dashboard provider. Currently supported: amud.")
+	localHost := flags.String("local-host", "", "Local Unraid host/IP for local dashboard URLs.")
+	urlMode := flags.String("url-mode", "local", "URL mode: local, cloudflare, hybrid.")
+	cloudflareDomain := flags.String("cloudflare-domain", "", "Cloudflare base domain, e.g. example.com.")
+	includePortOnly := flags.Bool("include-port-only", false, "Also include templates without WebUI that only expose a TCP port.")
+	runtimeFilter := flags.String("runtime-filter", "running", "Runtime filter: templates, existing, or running.")
+	recreateMode := flags.String("recreate-mode", "changed", "Recreate mode after XML apply: changed, all, or none.")
+	inspectPath := flags.String("inspect", "", "Optional docker inspect JSON file/directory for runtime filtering and recreate planning.")
+	dockerSocket := flags.String("docker-socket", "", "Docker unix socket path for runtime filtering/recreate planning, e.g. /var/run/docker.sock.")
+	dockerHost := flags.String("docker-host", "", "Docker HTTP API endpoint for runtime filtering/recreate planning. Use only for trusted local/proxy endpoints.")
+	jsonOutput := flags.Bool("json", false, "Print machine-readable JSON.")
+	diffOutput := flags.Bool("diff", false, "Print candidate DockerMan XML unified diff. Read-only; does not write files.")
+	outPath := flags.String("out", "", "Write dashboard sync plan JSON to this path. Read-only for Unraid templates.")
+	var routes routeFlags
+	var names nameFlags
+	var excludes nameFlags
+	flags.Var(&routes, "route", "Cloudflare mapping NAME=SUBDOMAIN_OR_URL. Can be repeated.")
+	flags.Var(&names, "container", "Limit dashboard sync plan to a container name. Can be repeated.")
+	flags.Var(&excludes, "exclude", "Exclude a container name from the dashboard sync plan. Can be repeated.")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if *templatesPath == "" {
+		return errors.New("--templates is required")
+	}
+	if *localHost == "" {
+		return errors.New("--local-host is required")
+	}
+	if *urlMode != "local" && *urlMode != "cloudflare" && *urlMode != "hybrid" {
+		return errors.New("--url-mode must be local, cloudflare, or hybrid")
+	}
+
+	templates, err := dockerxml.LoadTemplates(*templatesPath)
+	if err != nil {
+		return err
+	}
+	normalizedRuntimeFilter, err := planner.NormalizeRuntimeFilter(*runtimeFilter)
+	if err != nil {
+		return err
+	}
+	normalizedRecreateMode, err := workflow.NormalizeRecreateMode(*recreateMode)
+	if err != nil {
+		return err
+	}
+
+	var runtime []dockerinspect.Container
+	if normalizedRuntimeFilter != "templates" || normalizedRecreateMode != workflow.RecreateModeNone {
+		runtime, err = loadRuntimeContainers(*inspectPath, *dockerSocket, *dockerHost)
+		if err != nil {
+			return err
+		}
+	}
+	if normalizedRuntimeFilter != "templates" {
+		templates, err = planner.FilterTemplatesByRuntime(templates, runtime, normalizedRuntimeFilter)
+		if err != nil {
+			return err
+		}
+	}
+	dashboardPlan, err := planner.BuildDashboardPlan(templates, planner.DashboardOptions{
+		Provider:         *provider,
+		LocalHost:        *localHost,
+		URLMode:          *urlMode,
+		CloudflareDomain: *cloudflareDomain,
+		CloudflareRoutes: routes.Map,
+		Names:            names.Map,
+		ExcludedNames:    excludes.Map,
+		IncludePortOnly:  *includePortOnly,
+		RuntimeFilter:    normalizedRuntimeFilter,
+	})
+	if err != nil {
+		return err
+	}
+	plan, err := workflow.BuildDashboardSyncPlan(templates, runtime, dashboardPlan, workflow.DashboardSyncOptions{
+		RecreateMode: normalizedRecreateMode,
+	})
+	if err != nil {
+		return err
+	}
+	if *diffOutput {
+		diffs, err := buildDashboardDiffs(dashboardPlan)
+		if err != nil {
+			return err
+		}
+		if *outPath != "" {
+			if err := writeJSONFile(*outPath, dashboardSyncPlanWithDiffs{Plan: plan, Diffs: diffs}); err != nil {
+				return err
+			}
+		}
+		if *jsonOutput {
+			return printJSON(dashboardSyncPlanWithDiffs{Plan: plan, Diffs: diffs})
+		}
+		printDashboardSyncPlan(plan, false)
+		printDashboardDiffs(diffs)
+		if *outPath != "" {
+			fmt.Printf("Dashboard sync plan JSON written to: %s\n", *outPath)
+		}
+		return nil
+	}
+	if *outPath != "" {
+		if err := writeJSONFile(*outPath, plan); err != nil {
+			return err
+		}
+	}
+	if *jsonOutput {
+		return printJSON(plan)
+	}
+	printDashboardSyncPlan(plan, true)
+	if *outPath != "" {
+		fmt.Printf("Dashboard sync plan JSON written to: %s\n", *outPath)
+	}
+	return nil
+}
+
 func runPlanAMUD(args []string) error {
 	flags := flag.NewFlagSet("plan-amud", flag.ContinueOnError)
 	templatesPath := flags.String("templates", "", "Path to templates-user directory or one XML file.")
@@ -592,6 +748,46 @@ func runApplyDashboardPlan(args []string) error {
 	return nil
 }
 
+func runApplyDashboardSyncPlan(args []string) error {
+	flags := flag.NewFlagSet("apply-dashboard-sync-plan", flag.ContinueOnError)
+	planPath := flags.String("plan", "", "Path to exported dashboard sync plan JSON.")
+	confirmPlanHash := flags.String("confirm-plan-hash", "", "Exact sync plan hash required to apply.")
+	backupDir := flags.String("backup-dir", "", "Directory for XML backups. Must not be inside templates-user.")
+	auditDir := flags.String("audit-dir", "", "Directory for audit JSON logs. Must not be inside templates-user.")
+	dockerSocket := flags.String("docker-socket", "", "Docker unix socket path, e.g. /var/run/docker.sock.")
+	dockerHost := flags.String("docker-host", "", "Docker HTTP API endpoint. Use only for trusted local/proxy endpoints.")
+	jsonOutput := flags.Bool("json", false, "Print machine-readable JSON report.")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if *planPath == "" {
+		return errors.New("--plan is required")
+	}
+
+	plan, err := executor.ReadDashboardSyncPlanFile(*planPath)
+	if err != nil {
+		return fmt.Errorf("read dashboard sync plan: %w", err)
+	}
+	runtime, err := runtimeController(*dockerSocket, *dockerHost)
+	if err != nil && len(plan.RecreatePlan.Entries) > 0 {
+		return err
+	}
+	report, err := executor.ApplyDashboardSyncPlan(context.Background(), plan, executor.DashboardSyncApplyOptions{
+		ConfirmPlanHash: *confirmPlanHash,
+		BackupDir:       *backupDir,
+		AuditDir:        *auditDir,
+		Runtime:         runtime,
+	})
+	if err != nil {
+		return err
+	}
+	if *jsonOutput {
+		return printJSON(report)
+	}
+	printDashboardSyncApplyReport(report)
+	return nil
+}
+
 func runApplyAMUDPlan(args []string) error {
 	flags := flag.NewFlagSet("apply-amud-plan", flag.ContinueOnError)
 	planPath := flags.String("plan", "", "Path to exported AMUD plan JSON.")
@@ -762,6 +958,19 @@ func loadRuntimeContainers(inspectPath string, dockerSocket string, dockerHost s
 	return client.InspectAll(context.Background())
 }
 
+func runtimeController(dockerSocket string, dockerHost string) (*dockerapi.Client, error) {
+	if dockerSocket != "" && dockerHost != "" {
+		return nil, errors.New("use only one Docker runtime controller: --docker-socket or --docker-host")
+	}
+	if dockerSocket != "" {
+		return dockerapi.NewUnixSocketClient(dockerSocket), nil
+	}
+	if dockerHost != "" {
+		return dockerapi.NewHTTPClient(dockerHost), nil
+	}
+	return nil, errors.New("one Docker runtime controller is required: --docker-socket or --docker-host")
+}
+
 func buildInventoryPayload(templates []dockerxml.Template) inventoryPayload {
 	payload := inventoryPayload{
 		WriteEnabled:  false,
@@ -806,6 +1015,41 @@ func printInventory(payload inventoryPayload) {
 		fmt.Printf("  Ports:       %s\n", portsSummary(container.Ports))
 		fmt.Printf("  TemplateURL: %s\n", valueOrDash(container.TemplateURL))
 		fmt.Printf("  Risks:       %s\n\n", riskSummary(container.RiskFindings))
+	}
+}
+
+func printIntegrationDiscovery(report discovery.Report) {
+	fmt.Println("Integration discovery (read-only)")
+	fmt.Printf("Records: %d\n\n", len(report.Records))
+	if len(report.Records) == 0 {
+		fmt.Println("No integration records found.")
+		return
+	}
+	for _, record := range report.Records {
+		fmt.Printf("- %s\n", record.Container)
+		fmt.Printf("  Type:   %s\n", valueOrDash(record.ServiceType))
+		fmt.Printf("  Status: %s\n", valueOrDash(record.DiscoveryStatus))
+		if record.ConfigRoot != "" {
+			fmt.Printf("  Config: %s\n", record.ConfigRoot)
+		}
+		for _, secret := range record.Secrets {
+			found := "missing"
+			if secret.Found {
+				found = "found"
+			}
+			preview := secret.Preview
+			if preview == "" {
+				preview = "-"
+			}
+			fmt.Printf("  Secret: %s [%s] %s %s (%d chars)\n", secret.Name, secret.Kind, found, preview, secret.Length)
+		}
+		if len(record.Warnings) > 0 {
+			fmt.Println("  Warnings:")
+			for _, warning := range record.Warnings {
+				fmt.Printf("    - %s\n", warning)
+			}
+		}
+		fmt.Println()
 	}
 }
 
@@ -1037,6 +1281,40 @@ func printDashboardPlan(plan planner.DashboardPlan, printFooter bool) {
 	}
 }
 
+func printDashboardSyncPlan(plan workflow.DashboardSyncPlan, printFooter bool) {
+	fmt.Println("Dashboard sync plan (read-only)")
+	fmt.Printf("Plan hash:     %s\n", plan.PlanHash)
+	fmt.Printf("Provider:      %s\n", plan.Provider)
+	fmt.Printf("Adapter:       %s\n", plan.Adapter)
+	fmt.Printf("Recreate mode: %s\n", plan.RecreateMode)
+	fmt.Printf("Dashboard entries: %d\n", len(plan.DashboardPlan.Entries))
+	fmt.Printf("Recreate entries:  %d\n\n", len(plan.RecreatePlan.Entries))
+	if len(plan.Entries) == 0 {
+		fmt.Println("No dashboard sync candidates found.")
+		return
+	}
+	for _, entry := range plan.Entries {
+		fmt.Printf("- %s\n", entry.Container)
+		fmt.Printf("  URL:               %s\n", valueOrDash(entry.URL))
+		fmt.Printf("  State:             %s\n", valueOrDash(entry.State))
+		fmt.Printf("  Dashboard changed: %t\n", entry.DashboardChanged)
+		fmt.Printf("  Recreate planned:  %t\n", entry.RecreatePlanned)
+		if entry.RecreatePlanReason != "" {
+			fmt.Printf("  Recreate reason:   %s\n", entry.RecreatePlanReason)
+		}
+		if len(entry.Warnings) > 0 {
+			fmt.Println("  Warnings:")
+			for _, warning := range entry.Warnings {
+				fmt.Printf("    - %s\n", warning)
+			}
+		}
+		fmt.Println()
+	}
+	if printFooter {
+		fmt.Println("No files were changed.")
+	}
+}
+
 func buildAMUDDiffs(plan planner.AMUDPlan) ([]diffRecord, error) {
 	records := make([]diffRecord, 0, len(plan.Entries))
 	for _, entry := range plan.Entries {
@@ -1239,6 +1517,64 @@ func printDashboardApplyReport(report executor.DashboardApplyReport) {
 	}
 }
 
+func printDashboardSyncApplyReport(report executor.DashboardSyncApplyReport) {
+	fmt.Println("Dashboard sync apply report")
+	fmt.Printf("Plan hash: %s\n", report.PlanHash)
+	fmt.Printf("OK:        %t\n", report.OK)
+	fmt.Println()
+	fmt.Println("Dashboard XML apply:")
+	for _, result := range report.DashboardReport.Results {
+		status := "unchanged"
+		if result.Changed {
+			status = "changed"
+		}
+		fmt.Printf("- %s: %s\n", result.Container, status)
+		if result.BackupPath != "" {
+			fmt.Printf("  Backup: %s\n", result.BackupPath)
+		}
+	}
+	if report.RecreateReport != nil {
+		fmt.Println()
+		fmt.Println("DockerMan recreate:")
+		for _, result := range report.RecreateReport.Results {
+			status := "rebuilt"
+			if result.Error != "" {
+				status = "failed"
+			}
+			fmt.Printf("- %s: %s\n", result.Container, status)
+			if result.StateBefore != "" || result.StateAfter != "" {
+				fmt.Printf("  State: %s -> %s\n", valueOrDash(result.StateBefore), valueOrDash(result.StateAfter))
+			}
+			if len(result.RuntimeAMUDLabels) > 0 {
+				fmt.Printf("  AMUD: %s\n", amudLabelSummary(result.RuntimeAMUDLabels))
+			}
+			if result.Error != "" {
+				fmt.Printf("  Error: %s\n", result.Error)
+			}
+		}
+	}
+	if len(report.Verification) > 0 {
+		fmt.Println()
+		fmt.Println("Runtime verification:")
+		for _, item := range report.Verification {
+			fmt.Printf("- %s: %s\n", item.Container, valueOrDash(item.State))
+			if len(item.Labels) > 0 {
+				fmt.Printf("  AMUD: %s\n", amudLabelSummary(item.Labels))
+			}
+			if item.Error != "" {
+				fmt.Printf("  Error: %s\n", item.Error)
+			}
+		}
+	}
+	if len(report.Warnings) > 0 {
+		fmt.Println()
+		fmt.Println("Warnings:")
+		for _, warning := range report.Warnings {
+			fmt.Printf("  - %s\n", warning)
+		}
+	}
+}
+
 func printTZApplyReport(report executor.TZApplyReport) {
 	fmt.Println("TZ apply report")
 	fmt.Printf("Plan hash:  %s\n", report.PlanHash)
@@ -1305,15 +1641,18 @@ func printRestoreReport(report executor.RestoreXMLReport) {
 func printUsage() {
 	fmt.Println("Usage:")
 	fmt.Println("  unraid-ai-manager inventory --templates PATH [--json]")
+	fmt.Println("  unraid-ai-manager discover-integrations --templates PATH [--container NAME] [--json]")
 	fmt.Println("  unraid-ai-manager inspect-json --inspect inspect.json [--json]")
 	fmt.Println("  unraid-ai-manager inspect-docker --docker-socket /var/run/docker.sock [--json]")
 	fmt.Println("  unraid-ai-manager compare-runtime --templates PATH (--inspect inspect.json | --docker-socket /var/run/docker.sock | --docker-host URL) [--json]")
 	fmt.Println("  unraid-ai-manager plan-recreate --templates PATH (--inspect inspect.json | --docker-socket /var/run/docker.sock | --docker-host URL) [--container NAME] [--all] [--json] [--out plan.json]")
 	fmt.Println("  unraid-ai-manager plan-dashboard --provider amud --templates PATH --local-host IP [--url-mode local|cloudflare|hybrid] [--cloudflare-domain DOMAIN] [--route NAME=SUBDOMAIN] [--container NAME] [--exclude NAME] [--include-port-only] [--runtime-filter templates|existing|running] [--inspect inspect.json | --docker-socket /var/run/docker.sock | --docker-host URL] [--diff] [--out plan.json]")
+	fmt.Println("  unraid-ai-manager plan-dashboard-sync --provider amud --templates PATH --local-host IP (--inspect inspect.json | --docker-socket /var/run/docker.sock | --docker-host URL) [--url-mode local|cloudflare|hybrid] [--recreate-mode changed|all|none] [--container NAME] [--exclude NAME] [--diff] [--out plan.json]")
 	fmt.Println("  unraid-ai-manager plan-amud --templates PATH --local-host IP [--url-mode local|cloudflare|hybrid] [--cloudflare-domain DOMAIN] [--route NAME=SUBDOMAIN] [--container NAME] [--exclude NAME] [--include-port-only] [--runtime-filter templates|existing|running] [--inspect inspect.json | --docker-socket /var/run/docker.sock | --docker-host URL] [--diff] [--out plan.json]")
 	fmt.Println("  unraid-ai-manager plan-tz --templates PATH [--tz Europe/Prague] [--container NAME] [--diff] [--out plan.json]")
 	fmt.Println("  unraid-ai-manager approve-plan --plan plan.json --approvals-dir PATH [--purpose dashboard|amud|tz|recreate] [--ttl 15m] [--json]")
 	fmt.Println("  unraid-ai-manager apply-dashboard-plan --plan plan.json --confirm-plan-hash HASH --backup-dir PATH --audit-dir PATH [--json]")
+	fmt.Println("  unraid-ai-manager apply-dashboard-sync-plan --plan plan.json --confirm-plan-hash HASH --backup-dir PATH --audit-dir PATH (--docker-socket /var/run/docker.sock | --docker-host URL) [--json]")
 	fmt.Println("  unraid-ai-manager apply-amud-plan --plan plan.json --confirm-plan-hash HASH --backup-dir PATH --audit-dir PATH [--json]")
 	fmt.Println("  unraid-ai-manager apply-tz-plan --plan plan.json --confirm-plan-hash HASH --backup-dir PATH --audit-dir PATH [--json]")
 	fmt.Println("  unraid-ai-manager apply-recreate-plan --plan plan.json --confirm-plan-hash HASH --audit-dir PATH (--docker-socket /var/run/docker.sock | --docker-host URL) [--json]")

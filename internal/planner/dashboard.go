@@ -272,6 +272,10 @@ func inferServiceCategory(integrationType string) string {
 		return "Monitoring"
 	case "unraid", "proxmox", "portainer", "nginx_proxy_manager", "traefik", "cloudflare_tunnel":
 		return "Network & infra"
+	case "gitea", "gitlab", "jenkins", "minio", "kopia", "headscale":
+		return "DevOps & storage"
+	case "homeassistant", "esphome", "octoprint", "minecraft":
+		return "Home & devices"
 	default:
 		return ""
 	}
@@ -295,6 +299,8 @@ var knownDashboardIntegrations = []integrationSignature{
 	{token: "lidarr", id: "lidarr"},
 	{token: "readarr", id: "readarr"},
 	{token: "whisparr", id: "whisparr"},
+	{token: "maintainerr", id: "maintainerr"},
+	{token: "autobrr", id: "autobrr"},
 	{token: "qbittorrent", id: "qbittorrent"},
 	{token: "sabnzbd", id: "sabnzbd"},
 	{token: "nzbget", id: "nzbget"},
@@ -302,6 +308,7 @@ var knownDashboardIntegrations = []integrationSignature{
 	{token: "deluge", id: "deluge"},
 	{token: "jackett", id: "jackett"},
 	{token: "tautulli", id: "tautulli"},
+	{token: "audiobookshelf", id: "audiobookshelf"},
 	{token: "plex", id: "plex"},
 	{token: "jellyfin", id: "jellyfin"},
 	{token: "emby", id: "emby"},
@@ -309,6 +316,11 @@ var knownDashboardIntegrations = []integrationSignature{
 	{token: "photoprism", id: "photoprism"},
 	{token: "navidrome", id: "navidrome"},
 	{token: "komga", id: "komga"},
+	{token: "tdarr", id: "tdarr"},
+	{token: "frigate", id: "frigate"},
+	{token: "tube-archivist", id: "tube_archivist"},
+	{token: "tubearchivist", id: "tube_archivist"},
+	{token: "kavita", id: "kavita"},
 	{token: "pihole", id: "pihole"},
 	{token: "adguard", id: "adguard"},
 	{token: "technitium", id: "technitium"},
@@ -318,10 +330,44 @@ var knownDashboardIntegrations = []integrationSignature{
 	{token: "glances", id: "glances"},
 	{token: "beszel", id: "beszel"},
 	{token: "prometheus", id: "prometheus"},
+	{token: "healthchecks", id: "healthchecks"},
+	{token: "gatus", id: "gatus"},
+	{token: "scrutiny", id: "scrutiny"},
+	{token: "umami", id: "umami"},
+	{token: "zabbix", id: "zabbix"},
+	{token: "gotify", id: "gotify"},
+	{token: "changedetection", id: "changedetection"},
+	{token: "change-detection", id: "changedetection"},
 	{token: "unraid", id: "unraid"},
 	{token: "proxmox", id: "proxmox"},
 	{token: "portainer", id: "portainer"},
 	{token: "traefik", id: "traefik"},
+	{token: "gitea", id: "gitea"},
+	{token: "gitlab", id: "gitlab"},
+	{token: "jenkins", id: "jenkins"},
+	{token: "minio", id: "minio"},
+	{token: "kopia", id: "kopia"},
+	{token: "headscale", id: "headscale"},
+	{token: "openmediavault", id: "omv"},
+	{token: "omv", id: "omv"},
+	{token: "ntfy", id: "ntfy"},
+	{token: "coolify", id: "coolify"},
+	{token: "aria2", id: "aria2"},
+	{token: "mikrotik", id: "mikrotik"},
+	{token: "omada", id: "omada"},
+	{token: "qnap", id: "qnap"},
+	{token: "gluetun", id: "gluetun"},
+	{token: "wg-easy", id: "wg_easy"},
+	{token: "wgeasy", id: "wg_easy"},
+	{token: "homeassistant", id: "homeassistant"},
+	{token: "home-assistant", id: "homeassistant"},
+	{token: "esphome", id: "esphome"},
+	{token: "octoprint", id: "octoprint"},
+	{token: "minecraft", id: "minecraft"},
+	{token: "firefly", id: "firefly_iii"},
+	{token: "vikunja", id: "vikunja"},
+	{token: "wallos", id: "wallos"},
+	{token: "slskd", id: "slskd"},
 }
 
 func hashDashboardPlan(plan DashboardPlan) string {

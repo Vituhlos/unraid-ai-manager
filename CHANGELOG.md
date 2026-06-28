@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Added
+
+- Added a dashboard sync workflow that combines dashboard planning, XML diffs, approved XML apply, optional DockerMan recreate and runtime verification under one sync plan hash.
+- Added helper endpoints `POST /v1/plan/dashboard-sync` and `POST /v1/apply/dashboard-sync`.
+- Added MCP tools `unraid_plan_dashboard_sync` and `unraid_apply_dashboard_sync`.
+- Added CLI commands `plan-dashboard-sync` and `apply-dashboard-sync-plan`.
+- Added read-only integration discovery for known appdata-backed services, including masked secret detection for Servarr-style `config.xml` API keys, Tautulli API keys and Plex tokens.
+- Added helper endpoint `POST /v1/discover/integrations`, MCP tool `unraid_discover_integrations` and CLI command `discover-integrations`.
+- Expanded dashboard service signature inference for AMUD-era integrations such as Jellyfin/Plex media services, Servarr apps, DevOps/storage tools, monitoring tools and long-tail self-hosted apps.
+
 ## [0.1.7] - 2026-06-28
 
 ### Fixed

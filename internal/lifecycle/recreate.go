@@ -89,6 +89,11 @@ func BuildRecreatePlan(templates []dockerxml.Template, runtime []dockerinspect.C
 	return plan
 }
 
+func FinalizeRecreatePlan(plan RecreatePlan) RecreatePlan {
+	plan.PlanHash = hashPlan(plan)
+	return plan
+}
+
 func reasonsFor(match compare.ContainerReport) []string {
 	var reasons []string
 	for _, label := range match.LabelComparisons {

@@ -8,6 +8,16 @@ Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+### Added
+
+- Přidán dashboard sync workflow, který spojuje dashboard plánování, XML diffy, schválenou XML aplikaci, volitelný DockerMan recreate a runtime ověření pod jeden sync plan hash.
+- Přidány helper endpointy `POST /v1/plan/dashboard-sync` a `POST /v1/apply/dashboard-sync`.
+- Přidány MCP tools `unraid_plan_dashboard_sync` a `unraid_apply_dashboard_sync`.
+- Přidány CLI příkazy `plan-dashboard-sync` a `apply-dashboard-sync-plan`.
+- Přidáno read-only discovery integrací pro známé appdata služby, včetně maskované detekce Servarr-style `config.xml` API klíčů, Tautulli API klíčů a Plex tokenů.
+- Přidán helper endpoint `POST /v1/discover/integrations`, MCP tool `unraid_discover_integrations` a CLI příkaz `discover-integrations`.
+- Rozšířeno odvozování dashboard service signatures pro AMUD-era integrace jako Jellyfin/Plex média, Servarr aplikace, DevOps/storage nástroje, monitoring a long-tail self-hosted aplikace.
+
 ## [0.1.7] - 2026-06-28
 
 ### Fixed

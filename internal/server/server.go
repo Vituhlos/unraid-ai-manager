@@ -18,6 +18,7 @@ import (
 
 	"unraid-ai-manager/internal/approval"
 	"unraid-ai-manager/internal/compare"
+	"unraid-ai-manager/internal/discovery"
 	"unraid-ai-manager/internal/dockerapi"
 	"unraid-ai-manager/internal/dockerinspect"
 	"unraid-ai-manager/internal/dockerxml"
@@ -26,6 +27,7 @@ import (
 	"unraid-ai-manager/internal/planner"
 	"unraid-ai-manager/internal/risk"
 	"unraid-ai-manager/internal/textdiff"
+	"unraid-ai-manager/internal/workflow"
 	"unraid-ai-manager/internal/xmlpatch"
 )
 
@@ -143,6 +145,28 @@ type DashboardPlanResponse struct {
 	PlanPath string                `json:"plan_path,omitempty"`
 }
 
+type DashboardSyncPlanRequest struct {
+	Provider          string            `json:"provider"`
+	LocalHost         string            `json:"local_host"`
+	URLMode           string            `json:"url_mode"`
+	CloudflareDomain  string            `json:"cloudflare_domain"`
+	CloudflareRoutes  map[string]string `json:"cloudflare_routes"`
+	Containers        []string          `json:"containers"`
+	ExcludeContainers []string          `json:"exclude_containers"`
+	IncludePortOnly   bool              `json:"include_port_only"`
+	RuntimeFilter     string            `json:"runtime_filter"`
+	InspectPath       string            `json:"inspect_path"`
+	RecreateMode      string            `json:"recreate_mode"`
+	IncludeDiffs      bool              `json:"include_diffs"`
+	SavePlan          bool              `json:"save_plan"`
+}
+
+type DashboardSyncPlanResponse struct {
+	Plan     workflow.DashboardSyncPlan `json:"plan"`
+	Diffs    []DiffRecord               `json:"diffs,omitempty"`
+	PlanPath string                     `json:"plan_path,omitempty"`
+}
+
 type TZPlanRequest struct {
 	Timezone         string   `json:"timezone"`
 	Containers       []string `json:"containers"`
@@ -169,6 +193,10 @@ type RecreatePlanResponse struct {
 	PlanPath string                 `json:"plan_path,omitempty"`
 }
 
+type IntegrationDiscoveryRequest struct {
+	Containers []string `json:"containers"`
+}
+
 type ApplyAMUDRequest struct {
 	PlanPath        string            `json:"plan_path,omitempty"`
 	Plan            *planner.AMUDPlan `json:"plan,omitempty"`
@@ -181,6 +209,13 @@ type ApplyDashboardRequest struct {
 	Plan            *planner.DashboardPlan `json:"plan,omitempty"`
 	ConfirmPlanHash string                 `json:"confirm_plan_hash"`
 	ApprovalToken   string                 `json:"approval_token,omitempty"`
+}
+
+type ApplyDashboardSyncRequest struct {
+	PlanPath        string                      `json:"plan_path,omitempty"`
+	Plan            *workflow.DashboardSyncPlan `json:"plan,omitempty"`
+	ConfirmPlanHash string                      `json:"confirm_plan_hash"`
+	ApprovalToken   string                      `json:"approval_token,omitempty"`
 }
 
 type ApplyTZRequest struct {
@@ -273,11 +308,14 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /v1/inventory", s.handleInventory)
 	s.mux.HandleFunc("GET /v1/docker/inspect", s.handleDockerInspect)
 	s.mux.HandleFunc("GET /v1/runtime/compare", s.handleRuntimeCompare)
+	s.mux.HandleFunc("POST /v1/discover/integrations", s.handleDiscoverIntegrations)
 	s.mux.HandleFunc("POST /v1/plan/dashboard", s.handlePlanDashboard)
+	s.mux.HandleFunc("POST /v1/plan/dashboard-sync", s.handlePlanDashboardSync)
 	s.mux.HandleFunc("POST /v1/plan/amud", s.handlePlanAMUD)
 	s.mux.HandleFunc("POST /v1/plan/tz", s.handlePlanTZ)
 	s.mux.HandleFunc("POST /v1/plan/recreate", s.handlePlanRecreate)
 	s.mux.HandleFunc("POST /v1/apply/dashboard", s.handleApplyDashboard)
+	s.mux.HandleFunc("POST /v1/apply/dashboard-sync", s.handleApplyDashboardSync)
 	s.mux.HandleFunc("POST /v1/apply/amud", s.handleApplyAMUD)
 	s.mux.HandleFunc("POST /v1/apply/tz", s.handleApplyTZ)
 	s.mux.HandleFunc("POST /v1/apply/recreate", s.handleApplyRecreate)
@@ -313,12 +351,27 @@ func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 				Actions:     []string{"read"},
 			},
 			{
+				ID:          "integration-discovery",
+				Status:      "implemented-initial",
+				Access:      "read",
+				Description: "Discover known application integrations and appdata-backed API key/token locations without returning full secret values.",
+				Actions:     []string{"read", "detect-secrets"},
+			},
+			{
 				ID:          "dashboard-config",
 				Status:      "implemented-first-provider",
 				Access:      "plan-apply",
 				Description: "Plan and apply dashboard configuration through provider adapters. AMUD DockerMan labels are the first adapter.",
 				Providers:   []string{planner.DashboardProviderAMUD},
 				Actions:     []string{"plan", "diff", "apply"},
+			},
+			{
+				ID:          "dashboard-sync",
+				Status:      "implemented-first-provider",
+				Access:      "plan-apply",
+				Description: "Plan and apply dashboard configuration plus optional DockerMan recreate and runtime verification as one approved workflow.",
+				Providers:   []string{planner.DashboardProviderAMUD},
+				Actions:     []string{"plan", "diff", "apply", "verify"},
 			},
 			{
 				ID:          "template-env",
@@ -389,6 +442,23 @@ func (s *Server) handleRuntimeCompare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeJSON(w, http.StatusOK, compare.RuntimeVsTemplates(templates, containers))
+}
+
+func (s *Server) handleDiscoverIntegrations(w http.ResponseWriter, r *http.Request) {
+	var request IntegrationDiscoveryRequest
+	if err := s.readJSON(r, &request); err != nil {
+		s.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	templates, err := s.loadTemplates()
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	report := discovery.DiscoverIntegrations(templates, discovery.Options{
+		Names: nameSet(request.Containers),
+	})
+	s.writeJSON(w, http.StatusOK, report)
 }
 
 func (s *Server) handlePlanAMUD(w http.ResponseWriter, r *http.Request) {
@@ -528,6 +598,92 @@ func (s *Server) handlePlanDashboard(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, response)
 }
 
+func (s *Server) handlePlanDashboardSync(w http.ResponseWriter, r *http.Request) {
+	var request DashboardSyncPlanRequest
+	if err := s.readJSON(r, &request); err != nil {
+		s.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	templates, err := s.loadTemplates()
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	runtimeFilter := request.RuntimeFilter
+	if runtimeFilter == "" && s.hasRuntimeSource(request.InspectPath) {
+		runtimeFilter = "running"
+	}
+	runtimeFilter, err = planner.NormalizeRuntimeFilter(runtimeFilter)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	var runtime []dockerinspect.Container
+	if s.hasRuntimeSource(request.InspectPath) {
+		runtime, err = s.loadRuntime(r.Context(), request.InspectPath)
+		if err != nil {
+			s.writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+	}
+	if runtimeFilter != "templates" {
+		if runtime == nil {
+			s.writeError(w, http.StatusBadRequest, errors.New("runtime source is required for runtime_filter other than templates"))
+			return
+		}
+		templates, err = planner.FilterTemplatesByRuntime(templates, runtime, runtimeFilter)
+		if err != nil {
+			s.writeError(w, http.StatusBadRequest, err)
+			return
+		}
+	}
+	localHost := request.LocalHost
+	if localHost == "" {
+		localHost = s.config.LocalHost
+	}
+	dashboardPlan, err := planner.BuildDashboardPlan(templates, planner.DashboardOptions{
+		Provider:         request.Provider,
+		LocalHost:        localHost,
+		URLMode:          request.URLMode,
+		CloudflareDomain: request.CloudflareDomain,
+		CloudflareRoutes: request.CloudflareRoutes,
+		Names:            nameSet(request.Containers),
+		ExcludedNames:    nameSet(request.ExcludeContainers),
+		IncludePortOnly:  request.IncludePortOnly,
+		RuntimeFilter:    runtimeFilter,
+	})
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	plan, err := workflow.BuildDashboardSyncPlan(templates, runtime, dashboardPlan, workflow.DashboardSyncOptions{
+		RecreateMode: request.RecreateMode,
+	})
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	response := DashboardSyncPlanResponse{Plan: plan}
+	if request.IncludeDiffs {
+		diffs, err := BuildDashboardDiffs(dashboardPlan)
+		if err != nil {
+			s.writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		response.Diffs = diffs
+	}
+	if request.SavePlan {
+		path, err := s.savePlan("dashboard-sync", plan)
+		if err != nil {
+			s.writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		response.PlanPath = path
+	}
+	s.writeJSON(w, http.StatusOK, response)
+}
+
 func (s *Server) handlePlanTZ(w http.ResponseWriter, r *http.Request) {
 	var request TZPlanRequest
 	if err := s.readJSON(r, &request); err != nil {
@@ -645,6 +801,39 @@ func (s *Server) handleApplyDashboard(w http.ResponseWriter, r *http.Request) {
 		ConfirmPlanHash: request.ConfirmPlanHash,
 		BackupDir:       s.config.BackupDir,
 		AuditDir:        s.config.AuditDir,
+	})
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, report)
+}
+
+func (s *Server) handleApplyDashboardSync(w http.ResponseWriter, r *http.Request) {
+	var request ApplyDashboardSyncRequest
+	if err := s.readJSON(r, &request); err != nil {
+		s.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	plan, err := resolveDashboardSyncPlan(request)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.consumeApproval(plan.PlanHash, request.ApprovalToken); err != nil {
+		s.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	runtime, err := s.runtimeController()
+	if err != nil && len(plan.RecreatePlan.Entries) > 0 {
+		s.writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	report, err := executor.ApplyDashboardSyncPlan(r.Context(), plan, executor.DashboardSyncApplyOptions{
+		ConfirmPlanHash: request.ConfirmPlanHash,
+		BackupDir:       s.config.BackupDir,
+		AuditDir:        s.config.AuditDir,
+		Runtime:         runtime,
 	})
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, err)
@@ -896,6 +1085,16 @@ func resolveDashboardPlan(request ApplyDashboardRequest) (planner.DashboardPlan,
 		return planner.DashboardPlan{}, errors.New("plan or plan_path is required")
 	}
 	return executor.ReadDashboardPlanFile(request.PlanPath)
+}
+
+func resolveDashboardSyncPlan(request ApplyDashboardSyncRequest) (workflow.DashboardSyncPlan, error) {
+	if request.Plan != nil {
+		return *request.Plan, nil
+	}
+	if request.PlanPath == "" {
+		return workflow.DashboardSyncPlan{}, errors.New("plan or plan_path is required")
+	}
+	return executor.ReadDashboardSyncPlanFile(request.PlanPath)
 }
 
 func resolveTZPlan(request ApplyTZRequest) (planner.TZPlan, error) {

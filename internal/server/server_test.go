@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -160,6 +161,8 @@ func TestServerCapabilities(t *testing.T) {
 		t.Fatal("missing tool safety summary")
 	}
 	foundDashboard := false
+	foundDashboardSync := false
+	foundDiscovery := false
 	foundCommunityApps := false
 	for _, capability := range capabilities.Capabilities {
 		if capability.ID == "dashboard-config" {
@@ -168,11 +171,17 @@ func TestServerCapabilities(t *testing.T) {
 				t.Fatalf("unexpected dashboard providers: %#v", capability.Providers)
 			}
 		}
+		if capability.ID == "dashboard-sync" {
+			foundDashboardSync = true
+		}
+		if capability.ID == "integration-discovery" {
+			foundDiscovery = true
+		}
 		if capability.ID == "community-applications" && capability.Status == "planned" {
 			foundCommunityApps = true
 		}
 	}
-	if !foundDashboard || !foundCommunityApps {
+	if !foundDashboard || !foundDashboardSync || !foundDiscovery || !foundCommunityApps {
 		t.Fatalf("missing expected capabilities: %#v", capabilities.Capabilities)
 	}
 }
@@ -275,6 +284,92 @@ func TestServerPlanAndApplyDashboardAMUDAdapter(t *testing.T) {
 	}
 	if !strings.Contains(string(modified), `Target="amud.url"`) {
 		t.Fatal("dashboard AMUD adapter did not apply AMUD URL")
+	}
+}
+
+func TestServerPlanDashboardSync(t *testing.T) {
+	dir := t.TempDir()
+	templatesDir := filepath.Join(dir, "templates")
+	plansDir := filepath.Join(dir, "plans")
+	if err := os.MkdirAll(templatesDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	templatePath := filepath.Join(templatesDir, "my-demo.xml")
+	templateXML := `<?xml version="1.0"?>
+<Container version="2">
+  <Name>Demo</Name>
+  <Repository>demo/demo</Repository>
+  <Network>bridge</Network>
+  <Privileged>false</Privileged>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <Config Name="WebUI" Target="8080" Default="8080" Mode="tcp" Type="Port">18080</Config>
+  <TailscaleStateDir/>
+</Container>
+`
+	if err := os.WriteFile(templatePath, []byte(templateXML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	inspectPath := filepath.Join(dir, "inspect.json")
+	inspectJSON := `[{
+  "Id": "demo-id",
+  "Name": "/Demo",
+  "Image": "demo/demo",
+  "Config": {"Image": "demo/demo", "Labels": {}, "Env": []},
+  "State": {"Status": "running"},
+  "HostConfig": {"NetworkMode": "bridge", "PortBindings": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "18080"}]}},
+  "NetworkSettings": {"Ports": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "18080"}]}}
+}]`
+	if err := os.WriteFile(inspectPath, []byte(inspectJSON), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	helper, err := New(Config{
+		TemplatesDir: templatesDir,
+		BackupDir:    filepath.Join(dir, "backups"),
+		AuditDir:     filepath.Join(dir, "audit"),
+		PlansDir:     plansDir,
+		LocalHost:    "192.0.2.10",
+		APIKey:       "secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(helper.Handler())
+	defer httpServer.Close()
+
+	planBody := `{"provider":"amud","include_diffs":true,"save_plan":true,"inspect_path":` + strconv.Quote(inspectPath) + `}`
+	request, err := http.NewRequest(http.MethodPost, httpServer.URL+"/v1/plan/dashboard-sync", strings.NewReader(planBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("X-Unraid-AI-Key", "secret")
+	request.Header.Set("Content-Type", "application/json")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", response.StatusCode)
+	}
+	var planResponse DashboardSyncPlanResponse
+	if err := json.NewDecoder(response.Body).Decode(&planResponse); err != nil {
+		t.Fatal(err)
+	}
+	if planResponse.Plan.Kind != "dashboard-sync" {
+		t.Fatalf("unexpected plan kind: %s", planResponse.Plan.Kind)
+	}
+	if planResponse.Plan.PlanHash == "" || planResponse.Plan.DashboardPlan.PlanHash == "" || planResponse.Plan.RecreatePlan.PlanHash == "" {
+		t.Fatalf("missing plan hashes: %#v", planResponse.Plan)
+	}
+	if len(planResponse.Plan.RecreatePlan.Entries) != 1 {
+		t.Fatalf("expected one recreate entry, got %#v", planResponse.Plan.RecreatePlan.Entries)
+	}
+	if planResponse.PlanPath == "" {
+		t.Fatal("missing saved sync plan path")
+	}
+	if len(planResponse.Diffs) != 1 || !planResponse.Diffs[0].Changed {
+		t.Fatalf("expected one changed diff, got %#v", planResponse.Diffs)
 	}
 }
 

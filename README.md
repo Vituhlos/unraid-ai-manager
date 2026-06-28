@@ -4,7 +4,7 @@ Safe Unraid automation for AI assistants.
 
 Unraid AI Manager is a local control plane for managing Unraid DockerMan templates through a strict plan → diff → approval → apply workflow. It is designed for AI/MCP clients, but the security boundary is the Unraid-side helper daemon, not the chat model.
 
-> Current status: `v0.1.5` is an early preview. It can inventory DockerMan XML templates, inspect Docker runtime state, plan generic dashboard/TZ/template changes, apply approved XML edits with backups and audit logs, apply approved DockerMan recreate plans, and expose those actions through an MCP server. AMUD is the first dashboard adapter. Community Applications installation and arbitrary container lifecycle management are planned, not implemented yet.
+> Current status: early preview. The latest released plugin is `v0.1.7`; the main branch may contain unreleased workflow improvements. It can inventory DockerMan XML templates, inspect Docker runtime state, plan generic dashboard/TZ/template changes, apply approved XML edits with backups and audit logs, apply approved DockerMan recreate plans, discover known app integrations without leaking full secrets, and expose those actions through an MCP server. AMUD is the first dashboard adapter. Community Applications installation and arbitrary container lifecycle management are planned, not implemented yet.
 
 ## Languages
 
@@ -23,6 +23,7 @@ Unraid AI Manager is a local control plane for managing Unraid DockerMan templat
 - Parses ports, paths, variables, labels, WebUI, template metadata and repository information.
 - Reads Docker runtime state through read-only Docker API calls.
 - Compares DockerMan XML templates with live container configuration.
+- Discovers known app integrations and appdata-backed API key/token locations with masked previews instead of full secret values.
 - Plans dashboard configuration through provider adapters. The first adapter is AMUD through DockerMan labels:
   - `amud.enable=true`
   - `amud.url=...`
@@ -37,6 +38,7 @@ Unraid AI Manager is a local control plane for managing Unraid DockerMan templat
 - Helper/MCP planning filters to currently running Docker containers by default when Docker runtime access is available.
 - Plans and applies `TZ` environment variable changes.
 - Plans and applies approved Docker recreate operations through Unraid DockerMan `rebuild_container`.
+- Can combine dashboard XML apply, DockerMan recreate and runtime verification into one approved dashboard sync workflow.
 - Creates XML backups before every write.
 - Requires a plan hash before applying any plan.
 - Optionally requires a short-lived local approval token before apply.
@@ -133,8 +135,11 @@ Available MCP tools:
 - `unraid_inventory`
 - `unraid_docker_inspect`
 - `unraid_compare_runtime`
+- `unraid_discover_integrations`
 - `unraid_plan_dashboard`
 - `unraid_apply_dashboard`
+- `unraid_plan_dashboard_sync`
+- `unraid_apply_dashboard_sync`
 - `unraid_plan_amud`
 - `unraid_apply_amud`
 - `unraid_plan_tz`
@@ -162,7 +167,7 @@ unraid-ai-manager approve-plan \
 
 5. Let the AI call the apply tool with the plan hash and token.
 6. Verify the audit log and resulting XML.
-7. If the change affects live Docker runtime, create and approve a recreate plan so DockerMan rebuilds the container from the updated XML.
+7. Prefer the dashboard sync workflow when the change should also be pushed into live containers. It plans XML changes, recreate operations and runtime verification under one plan hash.
 
 ## Manual CLI examples
 
@@ -170,6 +175,13 @@ Inventory:
 
 ```bash
 unraid-ai-manager inventory \
+  --templates /boot/config/plugins/dockerMan/templates-user
+```
+
+Discover known integrations and masked API key/token locations:
+
+```bash
+unraid-ai-manager discover-integrations \
   --templates /boot/config/plugins/dockerMan/templates-user
 ```
 
@@ -200,6 +212,32 @@ unraid-ai-manager apply-dashboard-plan \
   --confirm-plan-hash <plan_hash> \
   --backup-dir /mnt/user/appdata/unraid-ai-manager/backups \
   --audit-dir /mnt/user/appdata/unraid-ai-manager/audit
+```
+
+Plan dashboard configuration and runtime propagation as one sync workflow:
+
+```bash
+unraid-ai-manager plan-dashboard-sync \
+  --provider amud \
+  --templates /boot/config/plugins/dockerMan/templates-user \
+  --url-mode local \
+  --local-host 192.0.2.10 \
+  --runtime-filter running \
+  --recreate-mode changed \
+  --docker-socket /var/run/docker.sock \
+  --diff \
+  --out /mnt/user/appdata/unraid-ai-manager/plans/dashboard-sync-plan.json
+```
+
+Apply an approved dashboard sync plan:
+
+```bash
+unraid-ai-manager apply-dashboard-sync-plan \
+  --plan /mnt/user/appdata/unraid-ai-manager/plans/dashboard-sync-plan.json \
+  --confirm-plan-hash <sync_plan_hash> \
+  --backup-dir /mnt/user/appdata/unraid-ai-manager/backups \
+  --audit-dir /mnt/user/appdata/unraid-ai-manager/audit \
+  --docker-socket /var/run/docker.sock
 ```
 
 `plan-amud` and `apply-amud-plan` remain as compatibility shortcuts for the AMUD label adapter, but new workflows should prefer the generic dashboard commands.

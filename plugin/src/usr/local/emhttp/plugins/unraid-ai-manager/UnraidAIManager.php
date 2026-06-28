@@ -162,17 +162,32 @@ $keyPreview = $hasKey ? substr($cfg["API_KEY"], 0, 8) . "..." . substr($cfg["API
 /etc/rc.d/rc.unraid-ai-manager status
 /etc/rc.d/rc.unraid-ai-manager restart
 
+/usr/local/bin/unraid-ai-manager discover-integrations \
+  --templates <?= uaim_h($cfg["TEMPLATES_DIR"]) ?>
+
+/usr/local/bin/unraid-ai-manager plan-dashboard-sync \
+  --provider amud \
+  --templates <?= uaim_h($cfg["TEMPLATES_DIR"]) ?> \
+  --local-host <?= uaim_h($cfg["LOCAL_HOST"] ?: "192.0.2.10") ?> \
+  --url-mode local \
+  --runtime-filter running \
+  --recreate-mode changed \
+  --docker-socket <?= uaim_h($cfg["DOCKER_SOCKET"]) ?> \
+  --diff \
+  --out <?= uaim_h($cfg["PLANS_DIR"]) ?>/dashboard-sync-plan.json
+
 /usr/local/bin/unraid-ai-manager approve-plan \
   --plan <?= uaim_h($cfg["PLANS_DIR"]) ?>/PLAN.json \
   --approvals-dir <?= uaim_h($cfg["APPROVALS_DIR"]) ?> \
-  --purpose amud \
+  --purpose dashboard-sync \
   --ttl 15m
 
-/usr/local/bin/unraid-ai-manager apply-recreate-plan \
-  --plan <?= uaim_h($cfg["PLANS_DIR"]) ?>/RECREATE_PLAN.json \
+/usr/local/bin/unraid-ai-manager apply-dashboard-sync-plan \
+  --plan <?= uaim_h($cfg["PLANS_DIR"]) ?>/dashboard-sync-plan.json \
   --confirm-plan-hash HASH \
+  --backup-dir <?= uaim_h($cfg["BACKUP_DIR"]) ?> \
+  --audit-dir <?= uaim_h($cfg["AUDIT_DIR"]) ?> \
   --docker-socket <?= uaim_h($cfg["DOCKER_SOCKET"]) ?> \
-  --audit-dir <?= uaim_h($cfg["AUDIT_DIR"]) ?>
   </pre>
 
   <h3>PC connection</h3>
