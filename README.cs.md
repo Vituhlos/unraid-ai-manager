@@ -4,7 +4,7 @@ Bezpečná automatizace Unraidu pro AI asistenty.
 
 Unraid AI Manager je lokální control-plane pro správu Unraid DockerMan šablon přes přísný workflow plán → diff → schválení → aplikace. Je navržený pro AI/MCP klienty, ale bezpečnostní hranice není chat s AI. Bezpečnostní hranice je helper daemon běžící lokálně na Unraidu.
 
-> Aktuální stav: `v0.1.2` je rané preview. Umí načíst DockerMan XML šablony, přečíst runtime stav Dockeru, naplánovat AMUD/TZ/template změny, aplikovat schválené XML úpravy se zálohami a auditem a vystavit tyto akce přes MCP server. Instalace Community Applications a reálné lifecycle akce kontejnerů jsou zatím plánované, ne implementované.
+> Aktuální stav: `v0.1.3` je rané preview. Umí načíst DockerMan XML šablony, přečíst runtime stav Dockeru, naplánovat AMUD/TZ/template změny, aplikovat schválené XML úpravy se zálohami a auditem a vystavit tyto akce přes MCP server. Instalace Community Applications a reálné lifecycle akce kontejnerů jsou zatím plánované, ne implementované.
 
 ## Jazyky
 
@@ -31,6 +31,9 @@ Unraid AI Manager je lokální control-plane pro správu Unraid DockerMan šablo
   - `local`: `http://<local_host>:<host_port>`
   - `cloudflare`: `https://<subdomain>.<domain>`
   - `hybrid`: Cloudflare, pokud existuje route, jinak local
+- Defaultně plánuje AMUD labely jen pro DockerMan šablony s explicitním `WebUI`.
+- Umí explicitně zahrnout TCP port-only šablony nebo omezit/vyloučit konkrétní kontejnery.
+- Helper/MCP planning při dostupném Docker runtime přístupu defaultně filtruje na aktuálně běžící Docker containery.
 - Plánuje a aplikuje změny env proměnné `TZ`.
 - Před každým zápisem vytváří XML backup.
 - Před aplikací vyžaduje hash plánu.
@@ -172,6 +175,10 @@ unraid-ai-manager plan-amud \
   --cloudflare-domain example.com \
   --route radarr=radarr \
   --route sonarr=sonarr \
+  --runtime-filter running \
+  --docker-socket /var/run/docker.sock \
+  --exclude mariadb \
+  --exclude mosquitto \
   --diff \
   --out /mnt/user/appdata/unraid-ai-manager/plans/amud-plan.json
 ```

@@ -54,7 +54,7 @@ The Unraid-side helper daemon is the enforcement point. It must enforce:
 - rejection of dangerous mounts and privileged operations;
 - separation between read-only inspect actions and write/lifecycle actions.
 
-## Current status in `v0.1.2`
+## Current status in `v0.1.3`
 
 Implemented:
 

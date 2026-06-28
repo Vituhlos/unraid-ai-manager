@@ -1,6 +1,7 @@
 param(
   [string]$GoExe = ".\.tools\go\go1.26.4\go\bin\go.exe",
-  [string]$OutDir = ".\dist"
+  [string]$OutDir = ".\dist",
+  [switch]$IncludeWindows
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,9 +13,16 @@ if (-not (Test-Path -LiteralPath $GoExe)) {
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
 $targets = @(
-  @{ GOOS = "linux"; GOARCH = "amd64"; EXT = "" },
-  @{ GOOS = "windows"; GOARCH = "amd64"; EXT = ".exe" }
+  @{ GOOS = "linux"; GOARCH = "amd64"; EXT = "" }
 )
+
+if ($IncludeWindows) {
+  $targets += @{ GOOS = "windows"; GOARCH = "amd64"; EXT = ".exe" }
+} else {
+  Get-ChildItem -LiteralPath $OutDir -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match 'windows-amd64\.exe(\.sha256)?$' } |
+    Remove-Item -Force
+}
 
 $commands = @(
   @{ Name = "unraid-ai-manager"; Package = "./cmd/unraid-ai-manager" },

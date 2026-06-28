@@ -8,6 +8,22 @@ Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-06-28
+
+### Changed
+
+- AMUD planner defaultně bere jen šablony, které mají DockerMan `WebUI`, místo toho, aby automaticky považoval každou TCP-only službu za webovou aplikaci.
+- Port-only AMUD kandidáty lze pořád explicitně zahrnout přes `include_port_only` v helper/MCP API nebo přes `--include-port-only` v CLI.
+- Helper/MCP AMUD planning nově při dostupném Docker runtime přístupu defaultně používá `runtime_filter=running`, takže se defaultně neplánují staré DockerMan XML šablony pro neběžící containery.
+- Release buildy nově defaultně generují jen Linux/Unraid binárky; Windows binárky vyžadují explicitní build flag a nebudou publikované, dokud nevyřešíme signing a false-positive detekce.
+
+### Added
+
+- Přidány AMUD include/exclude filtry pro helper/MCP planning requesty přes `containers` a `exclude_containers`.
+- Přidány AMUD include/exclude filtry do CLI přes opakovatelné flagy `--container` a `--exclude`.
+- Přidáno AMUD runtime filtrování přes `runtime_filter=templates|existing|running`.
+- Přidány testy pro port-only AMUD filtrování a include/exclude chování kontejnerů.
+
 ## [0.1.2] - 2026-06-28
 
 ### Fixed
@@ -67,7 +83,8 @@ Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0
 - Helper se defaultně binduje na `127.0.0.1:37231`.
 - Helper podporuje autentizaci přes API key.
 
-[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Vituhlos/unraid-ai-manager/releases/tag/v0.1.0

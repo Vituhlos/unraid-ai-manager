@@ -293,11 +293,20 @@ func runPlanAMUD(args []string) error {
 	localHost := flags.String("local-host", "", "Local Unraid host/IP for local AMUD URLs.")
 	urlMode := flags.String("url-mode", "local", "URL mode: local, cloudflare, hybrid.")
 	cloudflareDomain := flags.String("cloudflare-domain", "", "Cloudflare base domain, e.g. example.com.")
+	includePortOnly := flags.Bool("include-port-only", false, "Also include templates without WebUI that only expose a TCP port.")
+	runtimeFilter := flags.String("runtime-filter", "templates", "Runtime filter: templates, existing, or running.")
+	inspectPath := flags.String("inspect", "", "Optional docker inspect JSON file/directory for runtime filtering.")
+	dockerSocket := flags.String("docker-socket", "", "Docker unix socket path for runtime filtering, e.g. /var/run/docker.sock.")
+	dockerHost := flags.String("docker-host", "", "Docker HTTP API endpoint for runtime filtering. Use only for trusted local/proxy endpoints.")
 	jsonOutput := flags.Bool("json", false, "Print machine-readable JSON.")
 	diffOutput := flags.Bool("diff", false, "Print candidate DockerMan XML unified diff. Read-only; does not write files.")
 	outPath := flags.String("out", "", "Write plan JSON to this path. Read-only for Unraid templates.")
 	var routes routeFlags
+	var names nameFlags
+	var excludes nameFlags
 	flags.Var(&routes, "route", "Cloudflare mapping NAME=SUBDOMAIN_OR_URL. Can be repeated.")
+	flags.Var(&names, "container", "Limit AMUD plan to a container name. Can be repeated.")
+	flags.Var(&excludes, "exclude", "Exclude a container name from the AMUD plan. Can be repeated.")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -315,11 +324,29 @@ func runPlanAMUD(args []string) error {
 	if err != nil {
 		return err
 	}
+	normalizedRuntimeFilter, err := planner.NormalizeRuntimeFilter(*runtimeFilter)
+	if err != nil {
+		return err
+	}
+	if normalizedRuntimeFilter != "templates" {
+		runtime, err := loadRuntimeContainers(*inspectPath, *dockerSocket, *dockerHost)
+		if err != nil {
+			return err
+		}
+		templates, err = planner.FilterTemplatesByRuntime(templates, runtime, normalizedRuntimeFilter)
+		if err != nil {
+			return err
+		}
+	}
 	plan := planner.BuildAMUDPlan(templates, planner.AMUDOptions{
 		LocalHost:        *localHost,
 		URLMode:          *urlMode,
 		CloudflareDomain: *cloudflareDomain,
 		CloudflareRoutes: routes.Map,
+		Names:            names.Map,
+		ExcludedNames:    excludes.Map,
+		IncludePortOnly:  *includePortOnly,
+		RuntimeFilter:    normalizedRuntimeFilter,
 	})
 	if *diffOutput {
 		diffs, err := buildAMUDDiffs(plan)
@@ -936,7 +963,7 @@ func printUsage() {
 	fmt.Println("  unraid-ai-manager inspect-docker --docker-socket /var/run/docker.sock [--json]")
 	fmt.Println("  unraid-ai-manager compare-runtime --templates PATH (--inspect inspect.json | --docker-socket /var/run/docker.sock | --docker-host URL) [--json]")
 	fmt.Println("  unraid-ai-manager plan-recreate --templates PATH (--inspect inspect.json | --docker-socket /var/run/docker.sock | --docker-host URL) [--container NAME] [--all] [--json] [--out plan.json]")
-	fmt.Println("  unraid-ai-manager plan-amud --templates PATH --local-host IP [--url-mode local|cloudflare|hybrid] [--cloudflare-domain DOMAIN] [--route NAME=SUBDOMAIN] [--diff] [--out plan.json]")
+	fmt.Println("  unraid-ai-manager plan-amud --templates PATH --local-host IP [--url-mode local|cloudflare|hybrid] [--cloudflare-domain DOMAIN] [--route NAME=SUBDOMAIN] [--container NAME] [--exclude NAME] [--include-port-only] [--runtime-filter templates|existing|running] [--inspect inspect.json | --docker-socket /var/run/docker.sock | --docker-host URL] [--diff] [--out plan.json]")
 	fmt.Println("  unraid-ai-manager plan-tz --templates PATH [--tz Europe/Prague] [--container NAME] [--diff] [--out plan.json]")
 	fmt.Println("  unraid-ai-manager approve-plan --plan plan.json --approvals-dir PATH [--purpose amud] [--ttl 15m] [--json]")
 	fmt.Println("  unraid-ai-manager apply-amud-plan --plan plan.json --confirm-plan-hash HASH --backup-dir PATH --audit-dir PATH [--json]")

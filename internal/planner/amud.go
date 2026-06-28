@@ -4,10 +4,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"unraid-ai-manager/internal/dockerinspect"
 	"unraid-ai-manager/internal/dockerxml"
 	"unraid-ai-manager/internal/risk"
 )
@@ -17,6 +19,10 @@ type AMUDOptions struct {
 	URLMode          string
 	CloudflareDomain string
 	CloudflareRoutes map[string]string
+	Names            map[string]bool
+	ExcludedNames    map[string]bool
+	IncludePortOnly  bool
+	RuntimeFilter    string
 }
 
 type AMUDPlan struct {
@@ -25,6 +31,8 @@ type AMUDPlan struct {
 	URLMode          string      `json:"url_mode"`
 	LocalHost        string      `json:"local_host"`
 	CloudflareDomain string      `json:"cloudflare_domain,omitempty"`
+	IncludePortOnly  bool        `json:"include_port_only,omitempty"`
+	RuntimeFilter    string      `json:"runtime_filter"`
 	Entries          []AMUDEntry `json:"entries"`
 	PlanHash         string      `json:"plan_hash"`
 }
@@ -72,6 +80,9 @@ func BuildAMUDPlan(templates []dockerxml.Template, options AMUDOptions) AMUDPlan
 	if options.CloudflareRoutes == nil {
 		options.CloudflareRoutes = map[string]string{}
 	}
+	if options.RuntimeFilter == "" {
+		options.RuntimeFilter = "templates"
+	}
 
 	plan := AMUDPlan{
 		Kind:             "amud-labels",
@@ -79,11 +90,20 @@ func BuildAMUDPlan(templates []dockerxml.Template, options AMUDOptions) AMUDPlan
 		URLMode:          options.URLMode,
 		LocalHost:        options.LocalHost,
 		CloudflareDomain: options.CloudflareDomain,
+		IncludePortOnly:  options.IncludePortOnly,
+		RuntimeFilter:    options.RuntimeFilter,
 	}
 
 	for _, template := range templates {
+		if !nameIncluded(template.Name, options.Names) || nameMatches(template.Name, options.ExcludedNames) {
+			continue
+		}
+
 		web := DetectWebCandidate(template)
 		if web.Confidence == "none" {
+			continue
+		}
+		if web.Confidence == "medium" && !options.IncludePortOnly && len(options.Names) == 0 {
 			continue
 		}
 
@@ -123,6 +143,43 @@ func BuildAMUDPlan(templates []dockerxml.Template, options AMUDOptions) AMUDPlan
 
 	plan.PlanHash = hashPlan(plan)
 	return plan
+}
+
+func NormalizeRuntimeFilter(value string) (string, error) {
+	value = strings.TrimSpace(strings.ToLower(value))
+	if value == "" {
+		value = "templates"
+	}
+	switch value {
+	case "templates", "existing", "running":
+		return value, nil
+	default:
+		return "", errors.New("runtime_filter must be templates, existing, or running")
+	}
+}
+
+func FilterTemplatesByRuntime(templates []dockerxml.Template, runtime []dockerinspect.Container, mode string) ([]dockerxml.Template, error) {
+	mode, err := NormalizeRuntimeFilter(mode)
+	if err != nil {
+		return nil, err
+	}
+	if mode == "templates" {
+		return templates, nil
+	}
+
+	runtimeIndex := dockerinspect.IndexByName(runtime)
+	filtered := make([]dockerxml.Template, 0, len(templates))
+	for _, template := range templates {
+		container, ok := lookupRuntimeByTemplateName(runtimeIndex, template.Name)
+		if !ok {
+			continue
+		}
+		if mode == "running" && !strings.EqualFold(container.State, "running") {
+			continue
+		}
+		filtered = append(filtered, template)
+	}
+	return filtered, nil
 }
 
 func DetectWebCandidate(template dockerxml.Template) WebDetection {
@@ -324,6 +381,34 @@ func lookupRoute(routes map[string]string, name string) string {
 		}
 	}
 	return ""
+}
+
+func nameIncluded(name string, names map[string]bool) bool {
+	if len(names) == 0 {
+		return true
+	}
+	return nameMatches(name, names)
+}
+
+func nameMatches(name string, names map[string]bool) bool {
+	if len(names) == 0 {
+		return false
+	}
+	for _, key := range []string{name, strings.ToLower(name), InferRouteKey(name)} {
+		if names[key] {
+			return true
+		}
+	}
+	return false
+}
+
+func lookupRuntimeByTemplateName(index map[string]dockerinspect.Container, name string) (dockerinspect.Container, bool) {
+	for _, key := range []string{name, strings.ToLower(name), InferRouteKey(name)} {
+		if container, ok := index[key]; ok {
+			return container, true
+		}
+	}
+	return dockerinspect.Container{}, false
 }
 
 func cloudflareURL(route string, domain string) string {

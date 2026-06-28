@@ -58,6 +58,21 @@ const tools = [
           type: "object",
           additionalProperties: { type: "string" },
         },
+        containers: { type: "array", items: { type: "string" } },
+        exclude_containers: { type: "array", items: { type: "string" } },
+        include_port_only: {
+          type: "boolean",
+          description: "Also include templates without WebUI that only expose a TCP port. Defaults to false.",
+        },
+        runtime_filter: {
+          type: "string",
+          enum: ["templates", "existing", "running"],
+          description: "Filter XML templates by Docker runtime state. Defaults to running when the helper has Docker access.",
+        },
+        inspect_path: {
+          type: "string",
+          description: "Optional path on the helper host to a docker inspect JSON snapshot for runtime filtering.",
+        },
         include_diffs: { type: "boolean" },
         save_plan: { type: "boolean" },
       },
@@ -227,7 +242,7 @@ async function dispatch(method, params) {
         },
         serverInfo: {
           name: "unraid-ai-manager",
-          version: "0.1.2",
+          version: "0.1.3",
         },
       };
     case "tools/list":

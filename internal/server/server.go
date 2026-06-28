@@ -88,12 +88,17 @@ type DiffRecord struct {
 }
 
 type AMUDPlanRequest struct {
-	LocalHost        string            `json:"local_host"`
-	URLMode          string            `json:"url_mode"`
-	CloudflareDomain string            `json:"cloudflare_domain"`
-	CloudflareRoutes map[string]string `json:"cloudflare_routes"`
-	IncludeDiffs     bool              `json:"include_diffs"`
-	SavePlan         bool              `json:"save_plan"`
+	LocalHost         string            `json:"local_host"`
+	URLMode           string            `json:"url_mode"`
+	CloudflareDomain  string            `json:"cloudflare_domain"`
+	CloudflareRoutes  map[string]string `json:"cloudflare_routes"`
+	Containers        []string          `json:"containers"`
+	ExcludeContainers []string          `json:"exclude_containers"`
+	IncludePortOnly   bool              `json:"include_port_only"`
+	RuntimeFilter     string            `json:"runtime_filter"`
+	InspectPath       string            `json:"inspect_path"`
+	IncludeDiffs      bool              `json:"include_diffs"`
+	SavePlan          bool              `json:"save_plan"`
 }
 
 type AMUDPlanResponse struct {
@@ -277,6 +282,27 @@ func (s *Server) handlePlanAMUD(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	runtimeFilter := request.RuntimeFilter
+	if runtimeFilter == "" && s.hasRuntimeSource(request.InspectPath) {
+		runtimeFilter = "running"
+	}
+	runtimeFilter, err = planner.NormalizeRuntimeFilter(runtimeFilter)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if runtimeFilter != "templates" {
+		runtime, err := s.loadRuntime(r.Context(), request.InspectPath)
+		if err != nil {
+			s.writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		templates, err = planner.FilterTemplatesByRuntime(templates, runtime, runtimeFilter)
+		if err != nil {
+			s.writeError(w, http.StatusBadRequest, err)
+			return
+		}
+	}
 	localHost := request.LocalHost
 	if localHost == "" {
 		localHost = s.config.LocalHost
@@ -286,6 +312,10 @@ func (s *Server) handlePlanAMUD(w http.ResponseWriter, r *http.Request) {
 		URLMode:          request.URLMode,
 		CloudflareDomain: request.CloudflareDomain,
 		CloudflareRoutes: request.CloudflareRoutes,
+		Names:            nameSet(request.Containers),
+		ExcludedNames:    nameSet(request.ExcludeContainers),
+		IncludePortOnly:  request.IncludePortOnly,
+		RuntimeFilter:    runtimeFilter,
 	})
 	response := AMUDPlanResponse{Plan: plan}
 	if request.IncludeDiffs {
@@ -474,6 +504,10 @@ func (s *Server) loadRuntime(ctx context.Context, inspectPath string) ([]dockeri
 		return dockerapi.NewHTTPClient(s.config.DockerHost).InspectAll(ctx)
 	}
 	return nil, errors.New("runtime source is not configured")
+}
+
+func (s *Server) hasRuntimeSource(inspectPath string) bool {
+	return inspectPath != "" || s.config.DockerSocket != "" || s.config.DockerHost != ""
 }
 
 func (s *Server) savePlan(kind string, value any) (string, error) {

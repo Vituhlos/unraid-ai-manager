@@ -54,7 +54,7 @@ Bezpečnostní hranice je helper daemon na Unraidu. Ten musí vynucovat:
 - odmítnutí nebezpečných mountů a privilegovaných operací;
 - oddělení read-only inspect akcí od write/lifecycle akcí.
 
-## Aktuální stav v `v0.1.2`
+## Aktuální stav v `v0.1.3`
 
 Implementováno:
 

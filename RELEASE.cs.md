@@ -44,7 +44,8 @@ Release notes vezmi z changelogu. Nahraj:
 - `dist/unraid-ai-manager-<version>-x86_64-1.txz`
 - `dist/unraid-ai-manager-<version>-x86_64-1.txz.sha256`
 - Linux binárky a checksumy
-- Windows binárky a checksumy
+
+Windows `.exe` binárky nenahrávej, dokud projekt nemá jasnou politiku pro signing a antivirus false-positive detekce.
 
 ## 5. Ověření install URL
 

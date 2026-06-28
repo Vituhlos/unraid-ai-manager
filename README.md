@@ -4,7 +4,7 @@ Safe Unraid automation for AI assistants.
 
 Unraid AI Manager is a local control plane for managing Unraid DockerMan templates through a strict plan → diff → approval → apply workflow. It is designed for AI/MCP clients, but the security boundary is the Unraid-side helper daemon, not the chat model.
 
-> Current status: `v0.1.2` is an early preview. It can inventory DockerMan XML templates, inspect Docker runtime state, plan AMUD/TZ/template changes, apply approved XML edits with backups and audit logs, and expose those actions through an MCP server. Community Applications installation and real container lifecycle actions are planned, not implemented yet.
+> Current status: `v0.1.3` is an early preview. It can inventory DockerMan XML templates, inspect Docker runtime state, plan AMUD/TZ/template changes, apply approved XML edits with backups and audit logs, and expose those actions through an MCP server. Community Applications installation and real container lifecycle actions are planned, not implemented yet.
 
 ## Languages
 
@@ -31,6 +31,9 @@ Unraid AI Manager is a local control plane for managing Unraid DockerMan templat
   - `local`: `http://<local_host>:<host_port>`
   - `cloudflare`: `https://<subdomain>.<domain>`
   - `hybrid`: Cloudflare when a route is known, otherwise local
+- Plans AMUD labels for DockerMan templates with an explicit `WebUI` by default.
+- Can explicitly include TCP port-only templates or limit/exclude specific containers when needed.
+- Helper/MCP planning filters to currently running Docker containers by default when Docker runtime access is available.
 - Plans and applies `TZ` environment variable changes.
 - Creates XML backups before every write.
 - Requires a plan hash before applying any plan.
@@ -172,6 +175,10 @@ unraid-ai-manager plan-amud \
   --cloudflare-domain example.com \
   --route radarr=radarr \
   --route sonarr=sonarr \
+  --runtime-filter running \
+  --docker-socket /var/run/docker.sock \
+  --exclude mariadb \
+  --exclude mosquitto \
   --diff \
   --out /mnt/user/appdata/unraid-ai-manager/plans/amud-plan.json
 ```

@@ -44,7 +44,8 @@ Create the release from the changelog entry. Upload:
 - `dist/unraid-ai-manager-<version>-x86_64-1.txz`
 - `dist/unraid-ai-manager-<version>-x86_64-1.txz.sha256`
 - Linux binaries and checksums
-- Windows binaries and checksums
+
+Do not upload Windows `.exe` binaries until the project has a clear signing and antivirus false-positive handling policy.
 
 ## 5. Verify install URLs
 
