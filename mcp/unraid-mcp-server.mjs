@@ -324,7 +324,7 @@ async function dispatch(method, params) {
         },
         serverInfo: {
           name: "unraid-ai-manager",
-          version: "0.1.6",
+          version: "0.1.7",
         },
       };
     case "tools/list":

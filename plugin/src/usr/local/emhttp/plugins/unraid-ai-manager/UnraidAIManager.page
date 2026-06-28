@@ -1,6 +1,6 @@
 Menu="Settings"
 Icon="robot"
-Version="0.1.6"
+Version="0.1.7"
 Title="Unraid AI Manager"
 Author="Vituhlos"
 Type="php"

@@ -8,6 +8,13 @@ Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-06-28
+
+### Fixed
+
+- Opraveno chování při upgradu pluginu, kdy mohl zůstat běžet předchozí helper proces; instalační krok nyní po instalaci balíčku helper restartuje místo pouhého `start`.
+- Zajištěno, že `/v1/capabilities` po upgradu Unraid pluginu okamžitě hlásí nově nainstalovanou verzi helperu.
+
 ## [0.1.6] - 2026-06-28
 
 ### Fixed
@@ -124,7 +131,8 @@ Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0
 - Helper se defaultně binduje na `127.0.0.1:37231`.
 - Helper podporuje autentizaci přes API key.
 
-[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.3...v0.1.4

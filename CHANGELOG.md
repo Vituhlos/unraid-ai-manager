@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-06-28
+
+### Fixed
+
+- Fixed plugin upgrades leaving the previous helper process running by restarting the helper after package installation instead of calling `start`.
+- Ensured `/v1/capabilities` reports the newly installed helper version immediately after upgrading the Unraid plugin.
+
 ## [0.1.6] - 2026-06-28
 
 ### Fixed
@@ -122,7 +129,8 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 - The helper binds to `127.0.0.1:37231` by default.
 - The helper supports API-key authentication.
 
-[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.3...v0.1.4

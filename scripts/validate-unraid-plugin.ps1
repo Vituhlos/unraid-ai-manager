@@ -40,6 +40,9 @@ if (Test-Path -LiteralPath $plgPath) {
   if ($plg -notmatch "/releases/download/v$([regex]::Escape($version))") {
     throw "dist/unraid-ai-manager.plg does not point to release tag v$version."
   }
+  if ($plg -notmatch "/etc/rc\.d/rc\.unraid-ai-manager restart") {
+    throw "dist/unraid-ai-manager.plg must restart the helper after install/upgrade so old helper processes do not keep running."
+  }
 }
 
 $txzPath = Join-Path $rootPath "dist\unraid-ai-manager-$version-x86_64-1.txz"

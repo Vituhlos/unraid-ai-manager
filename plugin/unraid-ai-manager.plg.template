@@ -49,7 +49,7 @@ REQUIRE_APPROVAL_TOKEN="true"
 CFG
 fi
 chmod +x /usr/local/bin/unraid-ai-helper /usr/local/bin/unraid-ai-manager /etc/rc.d/rc.unraid-ai-manager
-/etc/rc.d/rc.unraid-ai-manager start
+/etc/rc.d/rc.unraid-ai-manager restart
 echo ""
 echo "-----------------------------------------------------------"
 echo " Unraid AI Manager &version; installed."
