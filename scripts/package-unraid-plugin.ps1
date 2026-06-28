@@ -50,6 +50,25 @@ New-Item -ItemType Directory -Force -Path $pkgRoot, $out | Out-Null
 
 Copy-Item -Path (Join-Path $root "plugin\src\*") -Destination $pkgRoot -Recurse -Force
 
+function Convert-ToLfUtf8NoBom {
+  param([Parameter(Mandatory = $true)][string]$Path)
+  $content = [System.IO.File]::ReadAllText($Path)
+  $content = $content -replace "`r`n", "`n"
+  $content = $content -replace "`r", "`n"
+  $encoding = [System.Text.UTF8Encoding]::new($false)
+  [System.IO.File]::WriteAllText($Path, $content, $encoding)
+}
+
+@(
+  (Join-Path $pkgRoot "etc\rc.d\rc.unraid-ai-manager"),
+  (Join-Path $pkgRoot "usr\local\emhttp\plugins\unraid-ai-manager\UnraidAIManager.page"),
+  (Join-Path $pkgRoot "usr\local\emhttp\plugins\unraid-ai-manager\UnraidAIManager.php")
+) | ForEach-Object {
+  if (Test-Path -LiteralPath $_) {
+    Convert-ToLfUtf8NoBom -Path $_
+  }
+}
+
 $binDir = Join-Path $pkgRoot "usr\local\bin"
 New-Item -ItemType Directory -Force -Path $binDir | Out-Null
 Copy-Item -LiteralPath (Join-Path $out "unraid-ai-helper-linux-amd64") -Destination (Join-Path $binDir "unraid-ai-helper") -Force

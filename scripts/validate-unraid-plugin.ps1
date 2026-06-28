@@ -42,4 +42,26 @@ if (Test-Path -LiteralPath $plgPath) {
   }
 }
 
+$txzPath = Join-Path $rootPath "dist\unraid-ai-manager-$version-x86_64-1.txz"
+if (Test-Path -LiteralPath $txzPath) {
+  $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "unraid-ai-manager-validate-$([System.Guid]::NewGuid().ToString('N'))"
+  try {
+    New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+    tar -xf $txzPath -C $tmp ./etc/rc.d/rc.unraid-ai-manager
+    if ($LASTEXITCODE -ne 0) {
+      throw "tar failed while inspecting $txzPath"
+    }
+    $rcPath = Join-Path $tmp "etc\rc.d\rc.unraid-ai-manager"
+    $bytes = [System.IO.File]::ReadAllBytes($rcPath)
+    if ($bytes.Length -lt 12 -or [System.Text.Encoding]::ASCII.GetString($bytes, 0, 11) -ne "#!/bin/bash") {
+      throw "Packaged rc.unraid-ai-manager has an invalid shebang."
+    }
+    if ($bytes -contains 13) {
+      throw "Packaged rc.unraid-ai-manager contains CRLF/CR line endings; Unraid requires LF."
+    }
+  } finally {
+    Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
 "Unraid plugin validation passed for version $version."

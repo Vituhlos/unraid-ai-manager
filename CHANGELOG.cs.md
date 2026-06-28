@@ -8,6 +8,14 @@ Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-06-28
+
+### Fixed
+
+- Opraveno balení Unraid rc scriptu z Windows release runnerů vynucením LF konců řádků pro plugin shell/PHP/page soubory.
+- Přidána package-time LF normalizace pro zabalený rc script a plugin UI soubory.
+- Přidána validace pluginu, která kontroluje vygenerovaný `.txz` a selže, pokud `rc.unraid-ai-manager` obsahuje CRLF/CR konce řádků.
+
 ## [0.1.5] - 2026-06-28
 
 ### Added
@@ -116,7 +124,8 @@ Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0
 - Helper se defaultně binduje na `127.0.0.1:37231`.
 - Helper podporuje autentizaci přes API key.
 
-[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.2...v0.1.3

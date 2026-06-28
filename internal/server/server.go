@@ -295,7 +295,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, CapabilitiesResponse{
-		Version:    "0.1.5",
+		Version:    "0.1.6",
 		ToolSafety: "named-actions-only; no raw shell; plan-hash-confirmed writes",
 		Capabilities: []CapabilityRecord{
 			{

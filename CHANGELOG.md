@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-06-28
+
+### Fixed
+
+- Fixed Unraid rc script packaging from Windows release runners by enforcing LF line endings for plugin shell/PHP/page files.
+- Added package-time LF normalization for the packaged rc script and plugin UI files.
+- Added plugin validation that inspects the generated `.txz` and fails if `rc.unraid-ai-manager` contains CRLF/CR line endings.
+
 ## [0.1.5] - 2026-06-28
 
 ### Added
@@ -114,7 +122,8 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 - The helper binds to `127.0.0.1:37231` by default.
 - The helper supports API-key authentication.
 
-[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/Vituhlos/unraid-ai-manager/compare/v0.1.2...v0.1.3
