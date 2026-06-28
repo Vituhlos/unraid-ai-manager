@@ -24,6 +24,7 @@ Unraid AI Manager is a local control plane for managing Unraid DockerMan templat
 - Reads Docker runtime state through read-only Docker API calls.
 - Compares DockerMan XML templates with live container configuration.
 - Discovers known app integrations and appdata-backed API key/token locations with masked previews instead of full secret values.
+- Discovery returns stable `secret_ref` identifiers for secrets. Full secret values are not exposed through MCP; future apply workflows resolve those references internally on Unraid.
 - Plans dashboard configuration through provider adapters. The first adapter is AMUD through DockerMan labels:
   - `amud.enable=true`
   - `amud.url=...`
@@ -184,6 +185,8 @@ Discover known integrations and masked API key/token locations:
 unraid-ai-manager discover-integrations \
   --templates /boot/config/plugins/dockerMan/templates-user
 ```
+
+The output includes masked previews and `secret_ref` values. Treat `secret_ref` as a capability reference, not as a secret value; it is only useful to approved local workflows.
 
 Plan dashboard configuration through the AMUD adapter:
 

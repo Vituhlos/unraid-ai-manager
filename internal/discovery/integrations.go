@@ -1,6 +1,9 @@
 package discovery
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,11 +37,24 @@ type Record struct {
 type Secret struct {
 	Name       string `json:"name"`
 	Kind       string `json:"kind"`
+	Ref        string `json:"ref,omitempty"`
 	SourcePath string `json:"source_path"`
 	Selector   string `json:"selector"`
 	Found      bool   `json:"found"`
 	Preview    string `json:"preview,omitempty"`
 	Length     int    `json:"length,omitempty"`
+}
+
+type ResolvedSecret struct {
+	Ref        string `json:"ref"`
+	Container  string `json:"container"`
+	Name       string `json:"name"`
+	Kind       string `json:"kind"`
+	SourcePath string `json:"source_path"`
+	Selector   string `json:"selector"`
+	Value      string `json:"-"`
+	Preview    string `json:"preview,omitempty"`
+	Length     int    `json:"length"`
 }
 
 func DiscoverIntegrations(templates []dockerxml.Template, options Options) Report {
@@ -118,6 +134,7 @@ func discoverXMLAPIKey(record *Record, path string, element string) {
 		SourcePath: path,
 		Selector:   element,
 	}
+	secret.Ref = buildSecretRef(record.Container, secret)
 	if ok {
 		value := xmlElementValue(payload, element)
 		secret.Found = value != ""
@@ -136,6 +153,7 @@ func discoverINIKey(record *Record, path string, key string) {
 		SourcePath: path,
 		Selector:   key,
 	}
+	secret.Ref = buildSecretRef(record.Container, secret)
 	if ok {
 		value := iniValue(payload, key)
 		secret.Found = value != ""
@@ -154,6 +172,7 @@ func discoverPlexToken(record *Record, path string) {
 		SourcePath: path,
 		Selector:   "PlexOnlineToken",
 	}
+	secret.Ref = buildSecretRef(record.Container, secret)
 	if ok {
 		value := xmlAttributeValue(payload, "PlexOnlineToken")
 		secret.Found = value != ""
@@ -161,6 +180,68 @@ func discoverPlexToken(record *Record, path string) {
 		secret.Length = len(value)
 	}
 	record.Secrets = append(record.Secrets, secret)
+}
+
+func ResolveSecretRef(templates []dockerxml.Template, ref string) (ResolvedSecret, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return ResolvedSecret{}, errors.New("secret ref is required")
+	}
+	report := DiscoverIntegrations(templates, Options{})
+	for _, record := range report.Records {
+		for _, secret := range record.Secrets {
+			if secret.Ref != ref {
+				continue
+			}
+			value, err := readSecretValue(secret)
+			if err != nil {
+				return ResolvedSecret{}, err
+			}
+			if value == "" {
+				return ResolvedSecret{}, fmt.Errorf("secret %s was found in discovery rules but has no value", ref)
+			}
+			return ResolvedSecret{
+				Ref:        ref,
+				Container:  record.Container,
+				Name:       secret.Name,
+				Kind:       secret.Kind,
+				SourcePath: secret.SourcePath,
+				Selector:   secret.Selector,
+				Value:      value,
+				Preview:    maskSecret(value),
+				Length:     len(value),
+			}, nil
+		}
+	}
+	return ResolvedSecret{}, fmt.Errorf("secret ref is not allowed by current DockerMan discovery rules: %s", ref)
+}
+
+func readSecretValue(secret Secret) (string, error) {
+	info, err := os.Stat(secret.SourcePath)
+	if err != nil {
+		return "", fmt.Errorf("secret source not available: %w", err)
+	}
+	if info.IsDir() {
+		return "", fmt.Errorf("secret source is a directory: %s", secret.SourcePath)
+	}
+	if info.Size() > 2<<20 {
+		return "", fmt.Errorf("secret source is larger than 2 MiB and was not read: %s", secret.SourcePath)
+	}
+	payloadBytes, err := os.ReadFile(secret.SourcePath)
+	if err != nil {
+		return "", fmt.Errorf("read secret source %s: %w", secret.SourcePath, err)
+	}
+	payload := string(payloadBytes)
+	switch secret.Kind {
+	case "xml-element":
+		return xmlElementValue(payload, secret.Selector), nil
+	case "xml-attribute":
+		return xmlAttributeValue(payload, secret.Selector), nil
+	case "ini-key":
+		return iniValue(payload, secret.Selector), nil
+	default:
+		return "", fmt.Errorf("unsupported secret kind: %s", secret.Kind)
+	}
 }
 
 func discoverCloudflareTunnelFiles(record *Record) {
@@ -241,4 +322,32 @@ func maskSecret(value string) string {
 		return "********"
 	}
 	return value[:6] + "..." + value[len(value)-6:]
+}
+
+func buildSecretRef(container string, secret Secret) string {
+	normalized := strings.Join([]string{
+		strings.ToLower(strings.TrimSpace(container)),
+		strings.ToLower(strings.TrimSpace(secret.Name)),
+		strings.ToLower(strings.TrimSpace(secret.Kind)),
+		filepath.Clean(secret.SourcePath),
+		strings.TrimSpace(secret.Selector),
+	}, "\x00")
+	sum := sha256.Sum256([]byte(normalized))
+	fingerprint := hex.EncodeToString(sum[:])[:16]
+	containerPart := safeRefPart(container)
+	namePart := safeRefPart(secret.Name)
+	return "secret://unraid-ai-manager/integration/" + containerPart + "/" + namePart + "/" + fingerprint
+}
+
+func safeRefPart(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	if value == "" {
+		return "unknown"
+	}
+	value = regexp.MustCompile(`[^a-z0-9_.-]+`).ReplaceAllString(value, "-")
+	value = strings.Trim(value, "-")
+	if value == "" {
+		return "unknown"
+	}
+	return value
 }

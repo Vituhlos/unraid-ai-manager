@@ -17,6 +17,7 @@ Formát vychází z [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0
 - Přidáno read-only discovery integrací pro známé appdata služby, včetně maskované detekce Servarr-style `config.xml` API klíčů, Tautulli API klíčů a Plex tokenů.
 - Přidán helper endpoint `POST /v1/discover/integrations`, MCP tool `unraid_discover_integrations` a CLI příkaz `discover-integrations`.
 - Rozšířeno odvozování dashboard service signatures pro AMUD-era integrace jako Jellyfin/Plex média, Servarr aplikace, DevOps/storage nástroje, monitoring a long-tail self-hosted aplikace.
+- Přidány stabilní `secret_ref` identifikátory pro nalezené secrety a interní allowlist resolver, aby budoucí apply workflow mohlo používat lokální secrety bez vyzrazení plných hodnot AI klientům.
 
 ## [0.1.7] - 2026-06-28
 

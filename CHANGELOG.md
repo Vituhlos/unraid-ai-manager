@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 - Added read-only integration discovery for known appdata-backed services, including masked secret detection for Servarr-style `config.xml` API keys, Tautulli API keys and Plex tokens.
 - Added helper endpoint `POST /v1/discover/integrations`, MCP tool `unraid_discover_integrations` and CLI command `discover-integrations`.
 - Expanded dashboard service signature inference for AMUD-era integrations such as Jellyfin/Plex media services, Servarr apps, DevOps/storage tools, monitoring tools and long-tail self-hosted apps.
+- Added stable `secret_ref` identifiers for discovered secrets and an internal allowlist resolver so future apply workflows can use local secrets without exposing full values to AI clients.
 
 ## [0.1.7] - 2026-06-28
 

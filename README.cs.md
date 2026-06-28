@@ -24,6 +24,7 @@ Unraid AI Manager je lokální control-plane pro správu Unraid DockerMan šablo
 - Čte runtime stav Dockeru přes read-only Docker API volání.
 - Porovnává DockerMan XML šablony s živou konfigurací kontejnerů.
 - Objevuje známé integrace aplikací a appdata umístění API klíčů/tokenů s maskovaným náhledem místo plných secret hodnot.
+- Discovery vrací stabilní `secret_ref` identifikátory pro secrety. Plné hodnoty secretů se přes MCP nevystavují; budoucí apply workflow je vyřeší interně přímo na Unraidu.
 - Plánuje konfiguraci dashboardů přes provider adaptery. První adapter je AMUD přes DockerMan labely:
   - `amud.enable=true`
   - `amud.url=...`
@@ -184,6 +185,8 @@ Discovery známých integrací a maskovaných umístění API klíčů/tokenů:
 unraid-ai-manager discover-integrations \
   --templates /boot/config/plugins/dockerMan/templates-user
 ```
+
+Výstup obsahuje maskované náhledy a `secret_ref` hodnoty. Ber `secret_ref` jako capability referenci, ne jako secret; hodí se jen pro schválené lokální workflow.
 
 Dashboard plán přes AMUD adapter:
 

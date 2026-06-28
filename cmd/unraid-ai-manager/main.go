@@ -1042,6 +1042,9 @@ func printIntegrationDiscovery(report discovery.Report) {
 				preview = "-"
 			}
 			fmt.Printf("  Secret: %s [%s] %s %s (%d chars)\n", secret.Name, secret.Kind, found, preview, secret.Length)
+			if secret.Ref != "" {
+				fmt.Printf("    Ref: %s\n", secret.Ref)
+			}
 		}
 		if len(record.Warnings) > 0 {
 			fmt.Println("  Warnings:")
