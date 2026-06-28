@@ -1,10 +1,9 @@
 [project]
 name = "unraid-ai-manager"
-version = "0.1.0"
-description = "Read-only prototype for a safe Unraid AI/MCP manager."
+version = "0.1.1"
+description = "Safe Unraid automation helper and MCP integration for AI-assisted DockerMan template management."
 requires-python = ">=3.11"
 dependencies = []
 
 [project.scripts]
 unraid-ai-manager = "unraid_ai_manager.cli:main"
-

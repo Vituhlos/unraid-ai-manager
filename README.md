@@ -1,258 +1,107 @@
 # Unraid AI Manager
 
-Bezpečný návrh a první read-only prototyp nástroje pro správu Unraidu přes AI/MCP.
+Safe Unraid automation for AI assistants.
 
-Aktuální stav projektu:
+Unraid AI Manager is a local control plane for managing Unraid DockerMan templates through a strict plan → diff → approval → apply workflow. It is designed for AI/MCP clients, but the security boundary is the Unraid-side helper daemon, not the chat model.
 
-- čte Unraid DockerMan XML šablony,
-- rozpozná porty, proměnné, cesty a labely,
-- umí vypsat inventory,
-- umí navrhnout AMUD labely bez zápisu do XML,
-- zatím neumí nic aplikovat.
+> Current status: `v0.1.1` is an early preview. It can inventory DockerMan XML templates, inspect Docker runtime state, plan AMUD/TZ/template changes, apply approved XML edits with backups and audit logs, and expose those actions through an MCP server. Community Applications installation and real container lifecycle actions are planned, not implemented yet.
 
-Produkční cíl je Unraid-native manager: AI navrhne plán, člověk ho lokálně schválí a lokální daemon ho teprve potom provede s backupem, auditem a rollbackem.
+## Languages
 
-## Lokální Go toolchain
+- English: this file
+- Czech: [README.cs.md](README.cs.md)
+- Architecture: [DESIGN.en.md](DESIGN.en.md) / [DESIGN.md](DESIGN.md)
+- Changelog: [CHANGELOG.md](CHANGELOG.md) / [CHANGELOG.cs.md](CHANGELOG.cs.md)
+- Versioning: [VERSIONING.md](VERSIONING.md) / [VERSIONING.cs.md](VERSIONING.cs.md)
+- Security: [SECURITY.md](SECURITY.md) / [SECURITY.cs.md](SECURITY.cs.md)
+- Contributing: [CONTRIBUTING.md](CONTRIBUTING.md) / [CONTRIBUTING.cs.md](CONTRIBUTING.cs.md)
 
-Go je pro vývoj nainstalované portable do workspace:
+## What it does
 
-```text
-.tools/go/go1.26.4/go/bin/go.exe
-```
+- Reads Unraid DockerMan XML templates from `/boot/config/plugins/dockerMan/templates-user`.
+- Parses ports, paths, variables, labels, WebUI, template metadata and repository information.
+- Reads Docker runtime state through read-only Docker API calls.
+- Compares DockerMan XML templates with live container configuration.
+- Plans AMUD labels:
+  - `amud.enable=true`
+  - `amud.url=...`
+  - `amud.name=...`
+  - `amud.icon=...`
+- Supports AMUD URL modes:
+  - `local`: `http://<local_host>:<host_port>`
+  - `cloudflare`: `https://<subdomain>.<domain>`
+  - `hybrid`: Cloudflare when a route is known, otherwise local
+- Plans and applies `TZ` environment variable changes.
+- Creates XML backups before every write.
+- Requires a plan hash before applying any plan.
+- Optionally requires a short-lived local approval token before apply.
+- Writes audit logs.
+- Restores XML templates from verified backups.
+- Exposes a PC-side MCP server with whitelisted tools only.
 
-Adresář `.tools/` je v `.gitignore`, takže se runtime nebude commitovat.
+## What it deliberately does not do yet
 
-## Lokální spuštění Go CLI
+- It does not install Community Applications containers yet.
+- It does not recreate, start, stop or remove containers yet.
+- It does not accept raw shell commands from AI.
+- It does not expose an unrestricted Docker socket to MCP clients.
+- It does not mount the full host filesystem into an AI-controlled container.
 
-Z workspace:
+Those capabilities are planned behind explicit policies, risk scoring and extra approval gates.
 
-```powershell
-& ".\.tools\go\go1.26.4\go\bin\go.exe" run ./cmd/unraid-ai-manager inventory --templates "C:\path\to\templates"
-& ".\.tools\go\go1.26.4\go\bin\go.exe" run ./cmd/unraid-ai-manager plan-amud --templates "C:\path\to\templates" --local-host 192.0.2.10
-```
-
-Preview XML diffu bez zápisu:
-
-```powershell
-& ".\.tools\go\go1.26.4\go\bin\go.exe" run ./cmd/unraid-ai-manager plan-amud `
-  --templates "C:\path\to\templates" `
-  --local-host 192.0.2.10 `
-  --diff
-```
-
-Export hashovaného plánu:
-
-```powershell
-& ".\.tools\go\go1.26.4\go\bin\go.exe" run ./cmd/unraid-ai-manager plan-amud `
-  --templates "C:\path\to\templates" `
-  --local-host 192.0.2.10 `
-  --diff `
-  --out ".\amud-plan.json"
-```
-
-Aplikace exportovaného AMUD plánu:
-
-```powershell
-& ".\.tools\go\go1.26.4\go\bin\go.exe" run ./cmd/unraid-ai-manager apply-amud-plan `
-  --plan ".\amud-plan.json" `
-  --confirm-plan-hash "<HASH_Z_PREVIEW>" `
-  --backup-dir ".\.local\backups" `
-  --audit-dir ".\.local\audit"
-```
-
-Rollback/obnova XML ze zálohy:
-
-```powershell
-& ".\.tools\go\go1.26.4\go\bin\go.exe" run ./cmd/unraid-ai-manager restore-xml-backup `
-  --backup "C:\path\to\backup.xml" `
-  --target "C:\path\to\template.xml" `
-  --confirm-backup-sha256 "<SHA256_ZALOHY>" `
-  --pre-restore-backup-dir ".\.local\restore-backups" `
-  --audit-dir ".\.local\audit"
-```
-
-Restore před přepsáním cílového XML vždy zazálohuje aktuální cílový soubor do `--pre-restore-backup-dir`.
-
-Později na Unraidu budou vhodnější adresáře například:
+## Architecture
 
 ```text
-/mnt/user/appdata/unraid-ai-manager/backups
-/mnt/user/appdata/unraid-ai-manager/restore-backups
-/mnt/user/appdata/unraid-ai-manager/audit
+AI client on PC
+  Claude / ChatGPT / other MCP-capable client
+        |
+        v
+PC-side MCP server
+  mcp/unraid-mcp-server.mjs
+        |
+        v
+Unraid-side helper daemon
+  unraid-ai-helper
+        |
+        +--> DockerMan XML templates
+        +--> read-only Docker API inspect
+        +--> backup / audit / approval token store
 ```
 
-Hybrid Cloudflare mapping:
+The MCP server translates AI requests into narrow, named tools. The helper daemon enforces the policy and performs local filesystem operations on Unraid.
 
-```powershell
-& ".\.tools\go\go1.26.4\go\bin\go.exe" run ./cmd/unraid-ai-manager plan-amud `
-  --templates "C:\path\to\templates" `
-  --url-mode hybrid `
-  --local-host 192.0.2.10 `
-  --cloudflare-domain example.com `
-  --route Seerr=seerr `
-  --route prowlarr=prowlarr
-```
+## Recommended installation
 
-Testy:
-
-```powershell
-& ".\.tools\go\go1.26.4\go\bin\go.exe" test ./...
-```
-
-Build binárek:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1
-```
-
-Výstupy:
+Install the Unraid plugin from this URL:
 
 ```text
-dist/unraid-ai-helper-linux-amd64
-dist/unraid-ai-helper-linux-amd64.sha256
-dist/unraid-ai-manager-linux-amd64
-dist/unraid-ai-manager-linux-amd64.sha256
-dist/unraid-ai-helper-windows-amd64.exe
-dist/unraid-ai-helper-windows-amd64.exe.sha256
-dist/unraid-ai-manager-windows-amd64.exe
-dist/unraid-ai-manager-windows-amd64.exe.sha256
+https://github.com/Vituhlos/unraid-ai-manager/releases/latest/download/unraid-ai-manager.plg
 ```
 
-Linux binár `unraid-ai-helper-linux-amd64` je určený pro Unraid jako bezpečný lokální agent. `unraid-ai-manager` je ruční CLI nástroj.
+In Unraid:
 
-## Unraid plugin
-
-Unraid část jde zabalit jako nativní plugin. Plugin je wrapper kolem helper daemonu; MCP server pořád běží na PC.
-
-Build plugin artefaktů:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\package-unraid-plugin.ps1 `
-  -Version 2026.06.28 `
-  -PackageUrl "https://github.com/Vituhlos/unraid-ai-manager/releases/download/v0.1.0" `
-  -PluginUrl "https://github.com/Vituhlos/unraid-ai-manager/releases/latest/download/unraid-ai-manager.plg"
-```
-
-Výstupy:
-
-```text
-dist/unraid-ai-manager.plg
-dist/unraid-ai-manager-2026.06.28-x86_64-1.txz
-dist/unraid-ai-manager-2026.06.28-x86_64-1.txz.sha256
-```
-
-Plugin Manager install vyžaduje, aby `.plg` i `.txz` byly dostupné přes URL. Pro reálný GUI install je tedy potřeba nahrát je například do GitHub Release a vygenerovat `.plg` s tímto URL.
-
-Lokální ruční test na Unraidu bez Plugin Manageru:
+1. Open `Plugins`.
+2. Paste the URL into `Install Plugin`.
+3. Open `Settings -> Unraid AI Manager`.
+4. Generate an API key.
+5. Keep the helper bound to `127.0.0.1:37231` unless you have a specific reason to expose it.
+6. Connect from your PC through an SSH tunnel:
 
 ```bash
-installpkg /boot/unraid-ai-manager-2026.06.28-x86_64-1.txz
-mkdir -p /boot/config/plugins/unraid-ai-manager
-cp /usr/local/emhttp/plugins/unraid-ai-manager/README.md /boot/config/plugins/unraid-ai-manager/README.installed
-chmod +x /etc/rc.d/rc.unraid-ai-manager /usr/local/bin/unraid-ai-helper /usr/local/bin/unraid-ai-manager
-/etc/rc.d/rc.unraid-ai-manager start
+ssh -L 37231:127.0.0.1:37231 root@<unraid-ip>
 ```
 
-Po plugin instalaci bude stránka v Settings -> Unraid AI Manager.
+## MCP configuration
 
-## Unraid helper daemon
-
-Cílový model:
-
-```text
-Claude/ChatGPT na PC
-  -> MCP server na PC
-    -> HTTP helper na Unraidu
-      -> DockerMan XML / Docker inspect / backup / audit
-```
-
-Lokální start na Unraidu:
-
-```bash
-chmod +x ./unraid-ai-helper-linux-amd64
-
-UNRAID_AI_API_KEY="zvol-si-dlouhy-token" ./unraid-ai-helper-linux-amd64 \
-  --listen 127.0.0.1:37231 \
-  --templates /boot/config/plugins/dockerMan/templates-user \
-  --backup-dir /mnt/user/appdata/unraid-ai-manager/backups \
-  --audit-dir /mnt/user/appdata/unraid-ai-manager/audit \
-  --plans-dir /mnt/user/appdata/unraid-ai-manager/plans \
-  --approvals-dir /mnt/user/appdata/unraid-ai-manager/approvals \
-  --docker-socket /var/run/docker.sock \
-  --local-host 192.0.2.10 \
-  --require-approval-token=true
-```
-
-Defaultně doporučuju `127.0.0.1`. Pro přístup z PC se dá použít SSH tunnel:
-
-```bash
-ssh -L 37231:127.0.0.1:37231 root@192.0.2.10
-```
-
-Pak z PC:
-
-```powershell
-Invoke-RestMethod `
-  -Uri "http://127.0.0.1:37231/v1/inventory" `
-  -Headers @{ "X-Unraid-AI-Key" = "zvol-si-dlouhy-token" }
-```
-
-Hlavní endpointy:
-
-```text
-GET  /v1/health
-GET  /v1/inventory
-GET  /v1/docker/inspect
-GET  /v1/runtime/compare
-POST /v1/plan/amud
-POST /v1/plan/tz
-POST /v1/plan/recreate
-POST /v1/apply/amud
-POST /v1/apply/tz
-POST /v1/restore/xml
-```
-
-Apply endpointy pořád vyžadují potvrzovací hash plánu.
-
-Pokud je zapnuté `--require-approval-token=true`, apply endpointy navíc vyžadují lokální approval token. Token vytvoříš přímo na Unraidu:
-
-```bash
-./unraid-ai-manager-linux-amd64 approve-plan \
-  --plan /mnt/user/appdata/unraid-ai-manager/plans/PLAN.json \
-  --approvals-dir /mnt/user/appdata/unraid-ai-manager/approvals \
-  --purpose amud \
-  --ttl 15m
-```
-
-Teprve token z tohoto příkazu vložíš do AI/MCP apply volání jako `approval_token`.
-
-Bezpečný reálný AMUD flow:
-
-```text
-1. AI zavolá unraid_plan_amud s include_diffs/save_plan.
-2. Ty zkontroluješ diff a plan_hash.
-3. Na Unraidu spustíš approve-plan pro uložený plán.
-4. AI zavolá unraid_apply_amud s confirm_plan_hash a approval_token.
-5. Helper udělá backup, XML patch a audit log.
-```
-
-## MCP server na PC
-
-MCP server je v:
-
-```text
-mcp/unraid-mcp-server.mjs
-```
-
-Spouští se na PC a volá Unraid helper přes HTTP:
+Run the MCP server on your PC. It connects to the Unraid helper over HTTP.
 
 ```powershell
 $env:UNRAID_AI_HELPER_URL="http://127.0.0.1:37231"
-$env:UNRAID_AI_API_KEY="zvol-si-dlouhy-token"
+$env:UNRAID_AI_API_KEY="<generated-api-key>"
 node .\mcp\unraid-mcp-server.mjs
 ```
 
-Příklad konfigurace pro MCP klienta:
+Example MCP client configuration:
 
 ```json
 {
@@ -264,136 +113,133 @@ Příklad konfigurace pro MCP klienta:
       ],
       "env": {
         "UNRAID_AI_HELPER_URL": "http://127.0.0.1:37231",
-        "UNRAID_AI_API_KEY": "zvol-si-dlouhy-token"
+        "UNRAID_AI_API_KEY": "<generated-api-key>"
       }
     }
   }
 }
 ```
 
-Aktuální MCP tools:
+Available MCP tools:
+
+- `unraid_health`
+- `unraid_inventory`
+- `unraid_docker_inspect`
+- `unraid_compare_runtime`
+- `unraid_plan_amud`
+- `unraid_apply_amud`
+- `unraid_plan_tz`
+- `unraid_apply_tz`
+- `unraid_plan_recreate`
+- `unraid_restore_xml`
+
+Apply tools require `confirm_plan_hash`. When approval tokens are enabled, they also require `approval_token`.
+
+## Safe AMUD workflow
+
+1. Ask the AI to create a plan, not to apply it.
+2. Review the proposed labels, URLs, risks and XML diff.
+3. Confirm the exact `plan_hash`.
+4. Create a short-lived local approval token on Unraid:
+
+```bash
+unraid-ai-manager approve-plan \
+  --plan /mnt/user/appdata/unraid-ai-manager/plans/PLAN.json \
+  --approvals-dir /mnt/user/appdata/unraid-ai-manager/approvals \
+  --purpose amud \
+  --ttl 15m
+```
+
+5. Let the AI call the apply tool with the plan hash and token.
+6. Verify the audit log and resulting XML.
+
+## Manual CLI examples
+
+Inventory:
+
+```bash
+unraid-ai-manager inventory \
+  --templates /boot/config/plugins/dockerMan/templates-user
+```
+
+Plan AMUD labels:
+
+```bash
+unraid-ai-manager plan-amud \
+  --templates /boot/config/plugins/dockerMan/templates-user \
+  --url-mode hybrid \
+  --local-host 192.0.2.10 \
+  --cloudflare-domain example.com \
+  --route radarr=radarr \
+  --route sonarr=sonarr \
+  --diff \
+  --out /mnt/user/appdata/unraid-ai-manager/plans/amud-plan.json
+```
+
+Apply an approved AMUD plan:
+
+```bash
+unraid-ai-manager apply-amud-plan \
+  --plan /mnt/user/appdata/unraid-ai-manager/plans/amud-plan.json \
+  --confirm-plan-hash <plan_hash> \
+  --approval-token <approval_token> \
+  --approvals-dir /mnt/user/appdata/unraid-ai-manager/approvals \
+  --backup-dir /mnt/user/appdata/unraid-ai-manager/backups \
+  --audit-dir /mnt/user/appdata/unraid-ai-manager/audit
+```
+
+Restore an XML backup:
+
+```bash
+unraid-ai-manager restore-xml-backup \
+  --backup /mnt/user/appdata/unraid-ai-manager/backups/my-container.xml \
+  --target /boot/config/plugins/dockerMan/templates-user/my-container.xml \
+  --confirm-backup-sha256 <backup_sha256> \
+  --pre-restore-backup-dir /mnt/user/appdata/unraid-ai-manager/restore-backups \
+  --audit-dir /mnt/user/appdata/unraid-ai-manager/audit
+```
+
+## Development
+
+The repository uses Go for the production helper/CLI and keeps the older Python prototype as reference material.
+
+Portable Go can live in:
 
 ```text
-unraid_health
-unraid_inventory
-unraid_docker_inspect
-unraid_compare_runtime
-unraid_plan_amud
-unraid_apply_amud
-unraid_plan_tz
-unraid_apply_tz
-unraid_plan_recreate
-unraid_restore_xml
+.tools/go/go1.26.4/go/bin/go.exe
 ```
 
-Apply tools nejsou “volný shell”; jen posílají schválený plán/hash do helperu.
-Při zapnutém approval režimu musí navíc dostat `approval_token`, který MCP server neumí sám vytvořit.
-
-## Docker inspect read-only workflow
-
-Nástroj umí načíst uložený JSON z `docker inspect`. Zatím tím obcházíme přímý přístup k Docker socketu; později to nahradí bezpečný Docker API proxy.
-
-Na Unraidu lze ručně získat read-only snapshot například:
-
-```bash
-docker inspect $(docker ps -aq) > /mnt/user/appdata/unraid-ai-manager/inspect.json
-```
-
-Na vývojovém stroji:
+Run tests:
 
 ```powershell
-& ".\.tools\go\go1.26.4\go\bin\go.exe" run ./cmd/unraid-ai-manager inspect-json `
-  --inspect "C:\path\to\inspect.json"
+& ".\.tools\go\go1.26.4\go\bin\go.exe" test ./...
+node --check .\mcp\unraid-mcp-server.mjs
 ```
 
-Na Unraidu lze později číst runtime stav přímo přes Docker socket:
-
-```bash
-./unraid-ai-manager inspect-docker --docker-socket /var/run/docker.sock
-```
-
-Tento příkaz používá jen Docker API `GET` volání. Pro produkční nasazení pořád platí, že lepší cílový model je úzký Docker API proxy, ne obecný socket mount pro MCP.
-
-Porovnání DockerMan XML šablon proti runtime inspect snapshotu:
+Build binaries:
 
 ```powershell
-& ".\.tools\go\go1.26.4\go\bin\go.exe" run ./cmd/unraid-ai-manager compare-runtime `
-  --templates "C:\path\to\templates" `
-  --inspect "C:\path\to\inspect.json"
+powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1
 ```
 
-Porovnání přímo proti Docker socketu:
-
-```bash
-./unraid-ai-manager compare-runtime \
-  --templates /boot/config/plugins/dockerMan/templates-user \
-  --docker-socket /var/run/docker.sock
-```
-
-Read-only recreate plán:
-
-```bash
-./unraid-ai-manager plan-recreate \
-  --templates /boot/config/plugins/dockerMan/templates-user \
-  --docker-socket /var/run/docker.sock \
-  --out /mnt/user/appdata/unraid-ai-manager/plans/recreate-plan.json
-```
-
-## Lokální spuštění Python referenčního prototypu
-
-Z workspace:
+Build Unraid plugin artifacts:
 
 ```powershell
-$env:PYTHONPATH="src"
-python -m unraid_ai_manager.cli inventory --templates "C:\path\to\templates"
-python -m unraid_ai_manager.cli plan-amud --templates "C:\path\to\templates" --local-host 192.0.2.10
+powershell -ExecutionPolicy Bypass -File .\scripts\package-unraid-plugin.ps1
 ```
 
-JSON výstup:
+Outputs are written to `dist/`.
 
-```powershell
-$env:PYTHONPATH="src"
-python -m unraid_ai_manager.cli inventory --templates "C:\path\to\templates" --json
-python -m unraid_ai_manager.cli plan-amud --templates "C:\path\to\templates" --local-host 192.0.2.10 --json
-```
+## Release version
 
-Hybrid Cloudflare mapping:
+The canonical project version is stored in [VERSION](VERSION).
 
-```powershell
-$env:PYTHONPATH="src"
-python -m unraid_ai_manager.cli plan-amud `
-  --templates "C:\path\to\templates" `
-  --url-mode hybrid `
-  --local-host 192.0.2.10 `
-  --cloudflare-domain example.com `
-  --route Seerr=seerr `
-  --route prowlarr=prowlarr
-```
+- Git tags use `vMAJOR.MINOR.PATCH`.
+- Unraid plugin/package versions use `MAJOR.MINOR.PATCH`.
+- Release notes are maintained in [CHANGELOG.md](CHANGELOG.md).
 
-## Bezpečnostní pravidlo MVP
+See [VERSIONING.md](VERSIONING.md) for the full policy.
 
-Planner příkazy jsou read-only vůči Unraid šablonám. `apply-amud-plan` už XML mění, ale jen když dostane:
+## License
 
-- exportovaný plán,
-- přesný `--confirm-plan-hash`,
-- `--backup-dir`,
-- `--audit-dir`.
-
-Bez toho odmítne běžet.
-
-`restore-xml-backup` obnovuje XML ze zálohy, ale jen když dostane přesný SHA256 hash zálohy. Před restore ještě uloží aktuální target XML jako pre-restore backup.
-
-Planner ani apply v této fázi:
-
-- nesahá na Docker socket,
-- nerecreatuje kontejnery,
-- neinstaluje Community Apps,
-- nepřijímá raw shell příkazy.
-
-Příkaz `--out` zapisuje pouze plánový JSON tam, kam mu explicitně řekneš. Nemění DockerMan šablony.
-
-Aktuální executor umí pouze AMUD label XML patch. Docker lifecycle a Community Apps install zatím nejsou implementované.
-
-Docker inspect workflow je read-only. Nepotřebuje Docker socket a nic nerecreatuje.
-
-`plan-recreate` je taky read-only. Pouze řekne, které kontejnery pravděpodobně potřebují recreate, protože runtime stav neodpovídá DockerMan XML.
+No license has been selected yet. Until a license is added, all rights are reserved by the repository owner.

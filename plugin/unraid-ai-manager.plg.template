@@ -17,9 +17,11 @@
 
   <CHANGES>
   ### &version;
-  - Install Unraid AI Manager helper daemon.
-  - Add Settings page.
+  - Install Unraid AI Manager helper daemon and CLI.
+  - Add Settings page for helper configuration and API key generation.
   - Add rc script for start/stop/restart/status.
+  - Use appdata-backed backups, plans, approvals and audit logs.
+  - See the GitHub changelog for complete release notes.
   </CHANGES>
 
   <FILE Name="/tmp/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">

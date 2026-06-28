@@ -1,19 +1,19 @@
-# Unraid plugin packaging
+# Balení Unraid pluginu
 
-This folder contains the Unraid plugin wrapper for Unraid AI Manager.
+Tato složka obsahuje Unraid plugin wrapper pro Unraid AI Manager.
 
-Czech version: [README.cs.md](README.cs.md)
+Anglická verze: [README.md](README.md)
 
-## Installed files
+## Instalované soubory
 
-The plugin installs:
+Plugin instaluje:
 
 - `/usr/local/bin/unraid-ai-helper`
 - `/usr/local/bin/unraid-ai-manager`
 - `/etc/rc.d/rc.unraid-ai-manager`
 - `/usr/local/emhttp/plugins/unraid-ai-manager/*`
 
-Persistent configuration:
+Persistentní konfigurace:
 
 ```text
 /boot/config/plugins/unraid-ai-manager/unraid-ai-manager.cfg
@@ -25,17 +25,17 @@ Runtime data:
 /mnt/user/appdata/unraid-ai-manager/
 ```
 
-This appdata directory contains backups, plans, approval records and audit logs.
+V appdata složce jsou backupy, plány, approval záznamy a audit logy.
 
 ## Build
 
-The packaging script reads the version from the repository-level `VERSION` file by default:
+Packaging script defaultně čte verzi z kořenového souboru `VERSION`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\package-unraid-plugin.ps1
 ```
 
-Outputs:
+Výstupy:
 
 ```text
 dist/unraid-ai-manager-<version>-x86_64-1.txz
@@ -43,7 +43,7 @@ dist/unraid-ai-manager-<version>-x86_64-1.txz.sha256
 dist/unraid-ai-manager.plg
 ```
 
-For a specific release tag:
+Pro konkrétní release tag:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\package-unraid-plugin.ps1 `
